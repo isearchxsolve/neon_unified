@@ -67,3 +67,5 @@
 [38;2;56;189;248m  · [0m[38;2;226;232;240m  repair: round 3: 1 left[0m
 [1;38;2;251;113;133m  [FAIL] [0m[1;38;2;241;245;249m  consistency: [FAIL] 1 remain after repair[0m
 [1;38;2;251;113;133m  [FAIL] [0m[1;38;2;241;245;249m  test: [FAIL] tests failed -- one repair pass[0m
+[1;38;2;251;113;133m  [FAIL] [0m[1;38;2;241;245;249m  test: [FAIL] tests still failing[0m
+[38;2;56;189;248m  · [0m[38;2;226;232;240m  devops: Deployment artifacts…[0m

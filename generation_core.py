@@ -1345,12 +1345,19 @@ class GenerationOrchestratorV5:
         """One focused repair pass from pytest output."""
         agent = GenAgent(self.pool, self.config)
         agent.role = "test_repair"
+        allowed_prefixes = (
+            ("backend/", "tests/") if ctx.get("stack") in ("fastapi-react", "flutter-fastapi")
+            else ("app/", "lib/", "tests/", "__tests__/")
+        )
+        allowed_text = ", ".join(allowed_prefixes)
         prompt = (
             f"Project: {ctx.get('project_name')}\nStack: {ctx.get('stack')}\n"
             f"Description: {ctx.get('description')}\n\n"
             f"pytest output (truncated):\n{test_output[-3500:]}\n\n"
             "Fix the failing tests by writing COMPLETE corrected source files.\n"
             "Prefer fixing application code over deleting assertions.\n"
+            f"For this stack, only write paths beneath: {allowed_text}. Do not introduce "
+            "a different application root or framework.\n"
             "Output format: for each file, a line '# FILE: relative/path.py' then the full file body.\n"
             "Only Python source. No markdown fences."
         )
@@ -1366,7 +1373,11 @@ class GenerationOrchestratorV5:
             if current_path and buf:
                 content = "\n".join(buf).strip()
                 errs: List[str] = []
-                if _safe_write(project_dir, current_path, content, errs):
+                if not current_path.startswith(allowed_prefixes):
+                    result.warnings.append(
+                        f"test_repair rejected out-of-contract path: {current_path}"
+                    )
+                elif _safe_write(project_dir, current_path, content, errs):
                     if current_path not in result.files_generated:
                         result.files_generated.append(current_path)
                 else:

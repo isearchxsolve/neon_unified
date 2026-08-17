@@ -96,7 +96,7 @@ truthfully closed by another local file merge:
   so a restored board cannot mutate its source board. Regression tests prove
   isolation, malformed-state rejection, and atomic preservation on failure.
 - **STACK_SURFACE/entity coordination: closed for all supported stacks.** The
-  authoritative generation-core contract is covered by the 1,159-case offline
+  authoritative generation-core contract is covered by the 1,160-case offline
   matrix, including endpoint/entity alignment, manifests, idempotency, and
   traversal/partial-write failure handling.
 

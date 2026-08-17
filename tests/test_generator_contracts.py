@@ -337,3 +337,29 @@ def test_import_repair_treats_existing_module_directory_as_package_not_sibling_f
     assert orchestrator._import_consistency(tmp_path, result.files_generated) == [
         "backend/core/database.py: imports 'backend.core.models' but module not generated"
     ]
+
+
+def test_test_repair_rejects_cross_framework_application_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orchestrator = gc.GenerationOrchestratorV5(pool=None, config={})
+    repaired = """# FILE: app/__init__.py
+from flask import Flask
+# FILE: backend/fixed.py
+VALUE = 1
+# FILE: tests/test_fixed.py
+from backend.fixed import VALUE
+assert VALUE == 1
+"""
+    monkeypatch.setattr(gc.GenAgent, "_call", lambda self, *args, **kwargs: repaired)
+    result = gc.GenerationResult(False, tmp_path, "flutter-fastapi")
+    orchestrator._repair_tests(
+        {"project_name": "contract", "description": "habit app", "stack": "flutter-fastapi"},
+        tmp_path,
+        "failed test output",
+        result,
+    )
+    assert not (tmp_path / "app").exists()
+    assert (tmp_path / "backend" / "fixed.py").is_file()
+    assert (tmp_path / "tests" / "test_fixed.py").is_file()
+    assert result.warnings == ["test_repair rejected out-of-contract path: app/__init__.py"]

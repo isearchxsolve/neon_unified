@@ -413,7 +413,7 @@ pytest --collect-only -q       # must report >= 1,000 collected tests
 pytest -q
 ```
 
-The repository release gate currently contains **1,159 distinct offline test
+The repository release gate currently contains **1,160 distinct offline test
 cases**, including a smoke-marked subset of roughly 50 cases. CI runs the same
 pinned dependency install, release-blocking lint check, compilation, smoke
 gate, and full suite on every push and pull request.

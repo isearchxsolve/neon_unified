@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 LOG = logging.getLogger("neon.generation")
 MAX_DESCRIPTION_CHARS = 12_000
+MAX_PROJECT_NAME_CHARS = 120
 
 
 class GenerationError(RuntimeError):
@@ -45,6 +47,35 @@ class GenerationInputError(GenerationError, ValueError):
 class GeneratedPathError(GenerationError, ValueError):
     """Raised when an agent attempts to write outside the requested project."""
 
+
+def _normalise_description(description: Optional[str]) -> str:
+    """Validate a user-supplied product description at the public boundary."""
+    if description is None:
+        return ""
+    if not isinstance(description, str):
+        raise GenerationInputError("description must be a string or None")
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise GenerationInputError(
+            f"description exceeds {MAX_DESCRIPTION_CHARS} character limit"
+        )
+    return description
+
+
+def _validate_project_name(project_name: Any) -> str:
+    """Accept human-readable project names without allowing control injection."""
+    if not isinstance(project_name, str):
+        raise GenerationInputError("generation context requires a string project_name")
+    name = project_name.strip()
+    if not name:
+        raise GenerationInputError("generation context requires a non-empty project_name")
+    if len(name) > MAX_PROJECT_NAME_CHARS:
+        raise GenerationInputError(
+            f"project_name exceeds {MAX_PROJECT_NAME_CHARS} character limit"
+        )
+    if any(ord(char) < 32 or ord(char) == 127 for char in name):
+        raise GenerationInputError("project_name cannot contain control characters")
+    return name
+
 # =============================================================================
 # Stack & Surface Contracts
 # =============================================================================
@@ -56,8 +87,8 @@ SUPPORTED_STACKS = (
     "flutter-fastapi",    # Flutter + FastAPI
 )
 
-def detect_stack(description: str) -> str:
-    d = (description or "").lower()
+def detect_stack(description: Optional[str]) -> str:
+    d = _normalise_description(description).lower()
     if any(k in d for k in ("flutter", "dart")):
         return "flutter-fastapi"
     if any(k in d for k in ("expo", "react native", "react-native", "ios app", "android app", "mobile app")):
@@ -87,7 +118,7 @@ _ENTITY_KEYWORDS: List[Tuple[Tuple[str, ...], str, str]] = [
 ]
 
 
-def derive_primary_entity(description: str) -> Tuple[str, str]:
+def derive_primary_entity(description: Optional[str]) -> Tuple[str, str]:
     """Best-effort guess at the app's core domain entity from the spec, e.g.
     ('habit', 'Habit') for a habit tracker. This exists because every
     downstream agent (backend service/router names, tester prompts, some
@@ -99,14 +130,14 @@ def derive_primary_entity(description: str) -> Tuple[str, str]:
     to 'project'/'Project' honestly (as a real fallback, not a silent
     universal default) when nothing matches.
     """
-    d = (description or "").lower()
+    d = _normalise_description(description).lower()
     for keywords, slug, pascal in _ENTITY_KEYWORDS:
         if any(k in d for k in keywords):
             return slug, pascal
     return "project", "Project"
 
 
-def stack_surface(stack: str, description: str = "") -> Dict[str, Any]:
+def stack_surface(stack: str, description: Optional[str] = "") -> Dict[str, Any]:
     """Authoritative contract for what the stack is allowed to expose.
 
     `description` drives the domain entity (defaults to a generic
@@ -114,6 +145,8 @@ def stack_surface(stack: str, description: str = "") -> Dict[str, Any]:
     caller that hasn't been updated to pass it -- but every in-repo caller
     now does).
     """
+    if not isinstance(stack, str) or stack not in SUPPORTED_STACKS:
+        raise GenerationInputError(f"Unsupported stack: {stack}")
     entity_slug, entity_pascal = derive_primary_entity(description)
     base = {
         "fastapi-react": {
@@ -141,7 +174,9 @@ def stack_surface(stack: str, description: str = "") -> Dict[str, Any]:
             "ui_lib": "material3-tokens",
         },
     }
-    result = base.get(stack, base["fastapi-react"])
+    result = dict(base[stack])
+    result["domain"] = list(result["domain"])
+    result["frontend_entities"] = list(result["frontend_entities"])
     result["entity_slug"] = entity_slug
     result["entity_pascal"] = entity_pascal
     return result
@@ -424,12 +459,28 @@ def _safe_write(project_dir: Path, rel: str, content: str, errors: List[str]) ->
     except ValueError:
         errors.append(f"path escape: {rel}")
         return False
+    tmp_path: Optional[Path] = None
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        tmp.write_text(content, encoding="utf-8")
-        tmp.replace(dest)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=dest.parent,
+            prefix=f".{dest.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp_file:
+            tmp_path = Path(tmp_file.name)
+            tmp_file.write(content)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        tmp_path.replace(dest)
     except OSError as e:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         errors.append(f"write failed {rel}: {e}")
         return False
     return True
@@ -911,10 +962,17 @@ def scaffold(stack: str, project_dir: Path, ctx: Dict[str, Any]) -> List[str]:
         raise GenerationInputError(f"Unsupported stack: {stack}")
     if not isinstance(ctx, dict):
         raise GenerationInputError("generation context must be a dictionary")
-    if not isinstance(ctx.get("project_name"), str) or not ctx["project_name"].strip():
-        raise GenerationInputError("generation context requires a non-empty project_name")
+    if not isinstance(project_dir, (str, Path)):
+        raise GenerationInputError("project_dir must be a path string or Path")
+    project_dir = Path(project_dir)
+    if project_dir.exists() and not project_dir.is_dir():
+        raise GenerationInputError("project_dir must be a directory path")
     created = []
-    name = ctx["project_name"].strip()
+    name = _validate_project_name(ctx.get("project_name"))
+    python_name = json.dumps(name, ensure_ascii=False)
+    html_name = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#x27;")
+    yaml_name = json.dumps(name, ensure_ascii=False)
+    ts_name = json.dumps(name, ensure_ascii=False)
     package_name = re.sub(r"[^a-z0-9_]+", "_", name.lower()).strip("_") or "neon_app"
     npm_name = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-") or "neon-app"
 
@@ -930,7 +988,7 @@ def scaffold(stack: str, project_dir: Path, ctx: Dict[str, Any]) -> List[str]:
 from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import health
 
-app = FastAPI(title="{name}")
+app = FastAPI(title={python_name})
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(health.router, prefix="/api")
 ''')
@@ -968,7 +1026,7 @@ def health():
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{name}</title>
+    <title>{html_name}</title>
   </head>
   <body class="bg-slate-950 text-slate-50">
     <div id="root"></div>
@@ -1069,7 +1127,7 @@ server.listen(process.env.PORT || 4000);
 
     elif stack == "flutter-fastapi":
         w("pubspec.yaml", f'''name: {package_name}
-description: {name}
+description: {yaml_name}
 publish_to: "none"
 version: 0.1.0
 environment:
@@ -1092,7 +1150,7 @@ void main() {
         # Backend same as fastapi-react minimal
         w("backend/requirements.txt", "fastapi>=0.111\nuvicorn[standard]>=0.30\nbcrypt\npython-jose[cryptography]\n")
         w("backend/main.py", f'''from fastapi import FastAPI
-app = FastAPI(title="{name}")
+app = FastAPI(title={python_name})
 @app.get("/api/health")
 def health():
     return {{"status": "ok"}}
@@ -1117,7 +1175,7 @@ def health():
   }}
 }}
 ''')
-        w("app/layout.tsx", f'''export const metadata = {{ title: "{name}" }};
+        w("app/layout.tsx", f'''export const metadata = {{ title: {ts_name} }};
 import "./globals.css";
 export default function RootLayout({{ children }}: {{ children: React.ReactNode }}) {{
   return (
@@ -1416,11 +1474,14 @@ class GenerationOrchestratorV5:
             )
         if not isinstance(project_dir, (str, Path)):
             raise GenerationInputError("project_dir must be a path string or Path")
+        project_path = Path(project_dir)
+        if project_path.exists() and not project_path.is_dir():
+            raise GenerationInputError("project_dir must be a directory path")
         if stack is not None and stack not in SUPPORTED_STACKS:
             raise GenerationInputError(f"Unsupported stack: {stack}")
         stack = stack or detect_stack(description)
 
-        project_dir = Path(project_dir).resolve()
+        project_dir = project_path.resolve()
         project_dir.mkdir(parents=True, exist_ok=True)
         name = project_dir.name
         run_id = uuid.uuid4().hex

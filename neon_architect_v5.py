@@ -4515,8 +4515,38 @@ class TodoTool(Tool):
         return self._counter
 
     def restore(self, todos: Dict[str, Dict[str, Any]], counter: int) -> None:
-        self._todos = todos
-        self._counter = max(0, int(counter))
+        """Replace this instance's board from validated session data.
+
+        The copy is deliberately structural rather than a simple ``dict(todos)``:
+        a shallow copy would preserve each nested item mapping and let a restored
+        board mutate the source board through ``update``. Session restoration is
+        therefore a per-instance ownership boundary, not merely an assignment.
+        """
+        if not isinstance(todos, dict):
+            raise ValueError("todos must be a dictionary")
+        if isinstance(counter, bool):
+            raise ValueError("todo counter must be an integer")
+        try:
+            restored_counter = int(counter)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("todo counter must be an integer") from exc
+
+        restored: Dict[str, Dict[str, Any]] = {}
+        for todo_id, item in todos.items():
+            if not isinstance(todo_id, str) or not todo_id.strip():
+                raise ValueError("todo IDs must be non-empty strings")
+            if not isinstance(item, dict):
+                raise ValueError(f"todo {todo_id!r} must be a dictionary")
+            content = item.get("content")
+            status = item.get("status")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError(f"todo {todo_id!r} requires non-empty content")
+            if status not in {"pending", "in_progress", "done"}:
+                raise ValueError(f"todo {todo_id!r} has invalid status")
+            restored[todo_id] = {"content": content.strip(), "status": status}
+
+        self._todos = restored
+        self._counter = max(0, restored_counter)
 
     def reset(self) -> None:
         self._todos.clear()

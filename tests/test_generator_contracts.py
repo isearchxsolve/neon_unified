@@ -203,7 +203,108 @@ def test_todo_restore_is_instance_local_and_defensive(tmp_path: Path) -> None:
     original.execute(action="add", content="persist me")
     restored.restore(dict(original.todos), original.counter)
     assert "persist me" in restored.execute(action="list").text()
+    assert not restored.execute(action="update", id="T001", status="done").is_error
+    assert original.todos["T001"]["status"] == "pending"
     assert unrelated.execute(action="list").text() == "No todos"
+
+
+@pytest.mark.parametrize(
+    ("todos", "counter"),
+    [
+        (None, 0),
+        ({"": {"content": "x", "status": "pending"}}, 1),
+        ({"T001": None}, 1),
+        ({"T001": {"content": "", "status": "pending"}}, 1),
+        ({"T001": {"content": "x", "status": "queued"}}, 1),
+        ({"T001": {"content": "x", "status": "pending"}}, True),
+        ({"T001": {"content": "x", "status": "pending"}}, "not-a-number"),
+    ],
+)
+def test_todo_restore_rejects_malformed_persisted_state(tmp_path: Path, todos: Any, counter: Any) -> None:
+    todo = TodoTool(tmp_path)
+    todo.execute(action="add", content="existing item")
+    with pytest.raises(ValueError):
+        todo.restore(todos, counter)
+    assert todo.todos == {"T001": {"content": "existing item", "status": "pending"}}
+
+
+@pytest.mark.parametrize("invalid", [0, [], {}, b"flutter", object()])
+def test_stack_contract_public_functions_reject_non_text_input(invalid: Any) -> None:
+    with pytest.raises(gc.GenerationInputError):
+        gc.detect_stack(invalid)
+    with pytest.raises(gc.GenerationInputError):
+        gc.derive_primary_entity(invalid)
+
+
+@pytest.mark.parametrize("invalid_stack", [None, "", "unknown", "../flutter-fastapi", 1])
+def test_stack_surface_rejects_unknown_or_unsafe_stack(invalid_stack: Any) -> None:
+    with pytest.raises(gc.GenerationInputError):
+        gc.stack_surface(invalid_stack, "Build a habit tracker")
+
+
+def test_stack_surface_returns_independent_contract_collections() -> None:
+    first = gc.stack_surface("flutter-fastapi", "Build a habit tracker")
+    first["domain"].append("unexpected")
+    first["frontend_entities"].append("Unexpected")
+    second = gc.stack_surface("flutter-fastapi", "Build a habit tracker")
+    assert second["domain"] == ["health", "auth", "habit"]
+    assert second["frontend_entities"] == ["Habit", "User"]
+
+
+@pytest.mark.parametrize("project_name", ["", "   ", "a\nnewline", "x" * (gc.MAX_PROJECT_NAME_CHARS + 1), None])
+def test_scaffold_rejects_invalid_or_control_character_project_names(tmp_path: Path, project_name: Any) -> None:
+    with pytest.raises(gc.GenerationInputError):
+        gc.scaffold("flutter-fastapi", tmp_path / "project", {"project_name": project_name})
+
+
+@pytest.mark.parametrize("stack", ["fastapi-react", "flutter-fastapi", "nextjs-postgres"])
+def test_scaffold_serializes_adversarial_project_name_without_corrupting_sources(
+    tmp_path: Path, stack: str
+) -> None:
+    project = tmp_path / stack
+    name = 'Unicode <App> "quoted" проект'
+    gc.scaffold(stack, project, {"project_name": name})
+    if stack in {"fastapi-react", "flutter-fastapi"}:
+        ast_source = (project / "backend/main.py").read_text(encoding="utf-8")
+        compile(ast_source, "backend/main.py", "exec")
+        assert f"title={json.dumps(name, ensure_ascii=False)}" in ast_source
+    if stack == "fastapi-react":
+        html = (project / "frontend/index.html").read_text(encoding="utf-8")
+        assert "&lt;App&gt;" in html and "&quot;quoted&quot;" in html
+    elif stack == "flutter-fastapi":
+        description = next(
+            line for line in (project / "pubspec.yaml").read_text(encoding="utf-8").splitlines()
+            if line.startswith("description: ")
+        )
+        assert json.loads(description.removeprefix("description: ")) == name
+    else:
+        layout = (project / "app/layout.tsx").read_text(encoding="utf-8")
+        assert f"title: {json.dumps(name, ensure_ascii=False)}" in layout
+
+
+def test_safe_write_preserves_destination_and_cleans_temporary_file_when_replace_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "safe.txt"
+    target.write_text("known-good", encoding="utf-8")
+
+    def fail_replace(self: Path, target_path: Path) -> Path:
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    errors: list[str] = []
+    assert not gc._safe_write(tmp_path, "safe.txt", "new content", errors)
+    assert errors == ["write failed safe.txt: simulated replace failure"]
+    assert target.read_text(encoding="utf-8") == "known-good"
+    assert not list(tmp_path.glob(".safe.txt.*.tmp"))
+
+
+def test_generate_rejects_existing_file_as_project_directory(tmp_path: Path) -> None:
+    blocked_path = tmp_path / "not-a-directory"
+    blocked_path.write_text("not a project", encoding="utf-8")
+    orchestrator = gc.GenerationOrchestratorV5(pool=None, config={})
+    with pytest.raises(gc.GenerationInputError, match="directory"):
+        orchestrator.generate("Build a habit tracker", blocked_path)
 
 
 def test_import_consistency_finds_and_repair_scaffolds_package_inits(tmp_path: Path) -> None:
@@ -216,4 +317,3 @@ def test_import_consistency_finds_and_repair_scaffolds_package_inits(tmp_path: P
     result = gc.GenerationResult(False, tmp_path, "fastapi-react")
     assert orchestrator._repair_imports({}, tmp_path, [], result) == 1
     assert (backend / "__init__.py").is_file()
-

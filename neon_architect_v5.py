@@ -4500,10 +4500,27 @@ class TodoTool(Tool):
         "required": ["action"],
     }
 
-    # Class-level state is intentional: session persist/restore serializes
-    # TodoTool._todos / _counter. Single REPL process = one active project board.
-    _todos: Dict[str, Dict[str, Any]] = {}
-    _counter = 0
+    def __init__(self, cwd: Path):
+        """Create an isolated task board for one agent/session."""
+        super().__init__(cwd)
+        self._todos: Dict[str, Dict[str, Any]] = {}
+        self._counter = 0
+
+    @property
+    def todos(self) -> Dict[str, Dict[str, Any]]:
+        return self._todos
+
+    @property
+    def counter(self) -> int:
+        return self._counter
+
+    def restore(self, todos: Dict[str, Dict[str, Any]], counter: int) -> None:
+        self._todos = todos
+        self._counter = max(0, int(counter))
+
+    def reset(self) -> None:
+        self._todos.clear()
+        self._counter = 0
 
     def execute(self, action: str = "list", id: Optional[str] = None, content: Optional[str] = None, status: Optional[str] = None, **kwargs) -> ToolResult:
         try:
@@ -4532,12 +4549,12 @@ class TodoTool(Tool):
                         is_error=True,
                     )
                 content = str(content).strip()
-                for tid0, t0 in TodoTool._todos.items():
+                for tid0, t0 in self._todos.items():
                     if t0.get("content") == content and t0.get("status") != "done":
                         return ToolResult(f"Todo already exists {tid0}: {content}")
-                TodoTool._counter += 1
-                tid = f"T{TodoTool._counter:03d}"
-                TodoTool._todos[tid] = {"content": content, "status": "pending"}
+                self._counter += 1
+                tid = f"T{self._counter:03d}"
+                self._todos[tid] = {"content": content, "status": "pending"}
                 return ToolResult(f"Added todo {tid}: {content}")
             elif action == "update":
                 if not id or not str(id).strip():
@@ -4551,7 +4568,7 @@ class TodoTool(Tool):
                         ),
                         is_error=True,
                     )
-                if id not in TodoTool._todos:
+                if id not in self._todos:
                     return ToolResult(
                         "",
                         error=(
@@ -4561,9 +4578,11 @@ class TodoTool(Tool):
                         is_error=True,
                     )
                 if content:
-                    TodoTool._todos[id]["content"] = content
-                if status:
-                    TodoTool._todos[id]["status"] = status
+                    self._todos[id]["content"] = content
+                if status is not None:
+                    if not isinstance(status, str) or status not in {"pending", "in_progress", "done"}:
+                        return ToolResult("", error=f"Invalid todo status: {status}", is_error=True)
+                    self._todos[id]["status"] = status
                 return ToolResult(f"Updated todo {id}")
             elif action == "remove":
                 if not id or not str(id).strip():
@@ -4575,7 +4594,7 @@ class TodoTool(Tool):
                         ),
                         is_error=True,
                     )
-                if id not in TodoTool._todos:
+                if id not in self._todos:
                     return ToolResult(
                         "",
                         error=(
@@ -4584,18 +4603,18 @@ class TodoTool(Tool):
                         ),
                         is_error=True,
                     )
-                del TodoTool._todos[id]
+                del self._todos[id]
                 return ToolResult(f"Removed todo {id}")
             elif action == "list":
-                if not TodoTool._todos:
+                if not self._todos:
                     return ToolResult("No todos")
                 lines = []
-                for tid, todo in TodoTool._todos.items():
+                for tid, todo in self._todos.items():
                     icon = {"pending": "○", "in_progress": "◐", "done": "*"}[todo["status"]]
                     lines.append(f"{icon} {tid}: {todo['content']} [{todo['status']}]")
                 return ToolResult("\n".join(lines))
             elif action == "clear":
-                TodoTool._todos.clear()
+                self._todos.clear()
                 return ToolResult("All todos cleared")
             else:
                 return ToolResult("", error=f"Unknown action: {action}", is_error=True)
@@ -5758,6 +5777,9 @@ class NeonArchitect:
             allow_local=bool(config.get("allow_local_network", True)),
             bash_confirm=bool(config.get("bash_confirm_destructive", False)),
         )
+        self.todo_tool = self.tools["todo"]
+        if not isinstance(self.todo_tool, TodoTool):
+            raise RuntimeError("todo tool was not initialized as TodoTool")
         self.config["allow_path_outside_project"] = False
         # ── Generation Layer: inject generate_app tool ───────────────────────
         try:
@@ -5889,8 +5911,8 @@ class NeonArchitect:
             if self.sdlc_completed or self.sdlc_phase_idx:
                 phase = SDLC_PHASES[self.sdlc_phase_idx] if self.sdlc_phase_idx < len(SDLC_PHASES) else "COMPLETE"
                 UI.info(f"SDLC phase: {phase.upper()} | completed: {', '.join(sorted(self.sdlc_completed)) or 'none'}")
-            if TodoTool._todos:
-                UI.info(f"Todos: {len(TodoTool._todos)} item(s) restored")
+            if self.todo_tool.todos:
+                UI.info(f"Todos: {len(self.todo_tool.todos)} item(s) restored")
             n_msgs = len([m for m in self.ctx.messages if m.get('role') != 'system'])
             if n_msgs:
                 UI.info(f"Conversation: {n_msgs} message(s) restored")
@@ -5983,7 +6005,7 @@ class NeonArchitect:
             if self.autopilot:
                 st["autopilot_resume"] = True
             st["open_todos"] = [
-                {"id": tid, **todo} for tid, todo in list(TodoTool._todos.items())[:40]
+                {"id": tid, **todo} for tid, todo in list(self.todo_tool.todos.items())[:40]
             ]
             st["src_write_paths"] = list(self._src_write_paths)[-40:]
             if self.project_state.get("validation") is not None:
@@ -6267,11 +6289,11 @@ class NeonArchitect:
             return ""
 
     def _todo_handoff_text(self) -> str:
-        if not TodoTool._todos:
+        if not self.todo_tool.todos:
             return "(no todos yet)"
         return "\n".join(
             f"- [{t.get('status','pending')}] {tid}: {t.get('content','')}"
-            for tid, t in TodoTool._todos.items()
+            for tid, t in self.todo_tool.todos.items()
         )
 
     def _phase_handoff_block(self, phase: str) -> str:
@@ -8409,7 +8431,7 @@ class NeonArchitect:
             artifact = reqs.get("artifact") or getattr(self, "plan_artifact", "PLAN.md")
             ok, n = self._artifact_ok(artifact, int(reqs.get("min_chars", 400)))
             added = self._phase_tool_counts.get("todo_add", 0)
-            board = len(TodoTool._todos) if TodoTool._todos else 0
+            board = len(self.todo_tool.todos)
             min_todos = int(reqs.get("min_todos", 5))
             todo_ok = added >= min_todos or board >= min_todos
             plan_text = self._read_artifact_snippet(artifact, max_chars=50000)
@@ -8884,8 +8906,7 @@ class NeonArchitect:
             UI.err(f"Unknown model '{name}'. Available: {available}")
 
     def cmd_todo(self):
-        todo_tool = TodoTool(self.project_dir)
-        result = todo_tool.execute(action="list")
+        result = self.todo_tool.execute(action="list")
         if HAS_RICH:
             box_style = ASCII if LEGACY_WIN_CONSOLE else ROUNDED
             console.print(Panel(
@@ -9016,21 +9037,25 @@ class NeonArchitect:
             self.config["allow_path_outside_project"] = False
             self.config["allow_local_network"] = True
             self.config["bash_confirm_destructive"] = False
-            self.tools = build_tools(
+            rebuilt_tools = build_tools(
                 self.project_dir, full_access=True, allow_outside=False,
                 allow_local=True, bash_confirm=False,
             )
+            rebuilt_tools["todo"] = self.todo_tool
+            self.tools = rebuilt_tools
             UI.ok("Full in-project permission (default). Files stay inside project folder.")
             return
         if mode in ("strict", "sandbox", "safe"):
             self.full_access = False
             self.config["full_access"] = False
             self.config["bash_confirm_destructive"] = True
-            self.tools = build_tools(
+            rebuilt_tools = build_tools(
                 self.project_dir, full_access=False, allow_outside=False,
                 allow_local=bool(self.config.get("allow_local_network", True)),
                 bash_confirm=True,
             )
+            rebuilt_tools["todo"] = self.todo_tool
+            self.tools = rebuilt_tools
             UI.ok("Strict mode enabled. Files still project-only. (run tool blocks destructive git ops outright; no confirm step exists yet.)")
             return
         if mode == "local":
@@ -9406,8 +9431,8 @@ def save_session(agent: "NeonArchitect", *, also_config: bool = True) -> bool:
             "messages": agent.ctx.export(),
             "compaction_summary": agent.ctx.compaction_summary,
             "meter": {"prompt": agent.meter.prompt, "completion": agent.meter.completion},
-            "todos": dict(TodoTool._todos),
-            "todo_counter": TodoTool._counter,
+            "todos": dict(agent.todo_tool.todos),
+            "todo_counter": agent.todo_tool.counter,
             "thinking_effort": agent.config.get("thinking_effort"),
         }
         sf = _project_session_path(agent.project_dir)
@@ -9529,8 +9554,7 @@ def apply_session(agent: "NeonArchitect", data: Dict[str, Any]) -> None:
                     "content": str(v.get("content") or v.get("text") or v.get("task") or ""),
                     "status": str(v.get("status") or v.get("state") or "pending"),
                 }
-            TodoTool._todos = cleaned
-            TodoTool._counter = int(_safe_get(data, "todo_counter") or len(cleaned))
+            agent.todo_tool.restore(cleaned, int(_safe_get(data, "todo_counter") or len(cleaned)))
         elif isinstance(todos, list):
             cleaned = {}
             for i, item in enumerate(todos):
@@ -9540,12 +9564,10 @@ def apply_session(agent: "NeonArchitect", data: Dict[str, Any]) -> None:
                         "content": str(item.get("content") or item.get("text") or ""),
                         "status": str(item.get("status") or item.get("state") or "pending"),
                     }
-            TodoTool._todos = cleaned
-            TodoTool._counter = int(_safe_get(data, "todo_counter") or len(cleaned))
+            agent.todo_tool.restore(cleaned, int(_safe_get(data, "todo_counter") or len(cleaned)))
     except Exception as e:
         UI.warn(f"Session restore (todos): {e}")
-        TodoTool._todos = {}
-        TodoTool._counter = 0
+        agent.todo_tool.reset()
 
     try:
         msgs = _safe_get(data, "messages") or []
@@ -10084,8 +10106,7 @@ def main():
             agent._phase_chars_written = 0
             agent._phase_bash_ok = False
             agent.current_turn_tool_calls = False
-            TodoTool._todos.clear()
-            TodoTool._counter = 0
+            agent.todo_tool.reset()
             agent.config.pop("last_goal", None)
             agent.config.pop("last_sdlc_phase_idx", None)
             agent.config.pop("last_sdlc_completed", None)
@@ -10117,8 +10138,7 @@ def main():
             agent._phase_tool_success_counts = {}
             agent._phase_chars_written = 0
             agent._phase_bash_ok = False
-            TodoTool._todos.clear()
-            TodoTool._counter = 0
+            agent.todo_tool.reset()
             agent.config.pop("last_goal", None)
             agent.config.pop("last_sdlc_phase_idx", None)
             agent.config.pop("last_sdlc_completed", None)

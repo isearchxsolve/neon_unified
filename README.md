@@ -398,6 +398,51 @@ Media quality is model/API-dependent — the same class of dependency oiioii has
 
 ---
 
+## Production verification and release procedure
+
+Install the exact dependency set, then run the offline gates. The smoke marker
+is a short offline subset; the complete suite collects more than 1,000
+behavior-based test cases and must pass before release.
+
+```bash
+python -m pip install -r requirements.txt
+python -m py_compile neon_architect.py neon_architect_v5.py generation_core.py
+python smoke_test.py
+pytest -m smoke -q
+pytest --collect-only -q       # must report >= 1,000 collected tests
+pytest -q
+```
+
+For the required live hard-stack check, use a fresh directory and one job per
+NIM key. Do not reuse a quota-starved partial run.
+
+```bash
+export NIM_API_KEY=... # PowerShell: $env:NIM_API_KEY='...'
+python neon_architect.py --project ./neon_flutter_release
+# In the interactive session:
+/generate flutter-fastapi Build a notes app with auth and note list
+```
+
+Record the emitted `run_id`, `success=`, import-consistency lines, repair
+rounds, `[soft]` UI errors, hard errors, Problem-A route strings, first-token
+timeouts, and HTTP 429 count in the release log. A missing key, provider outage,
+or quota response is an operational blocker, not a successful verification.
+
+### Determinism and security
+
+- Base scaffolds and safe writes are deterministic: the same stack, project
+  name, and context produce identical files. Live model output is intentionally
+  non-deterministic; its run ID is an observability field and is not written to
+  generated source.
+- Generated relative paths are validated against traversal and written atomically.
+  Empty/oversized descriptions and unknown stacks fail with typed input errors.
+- Never put credentials in config files, prompts, or source. Read NIM and media
+  credentials from environment variables (see `.env.example`); keep real `.env`
+  files untracked. CI runs without secrets and covers only offline behavior.
+- The current known limitations are maintained in `UNIFIED.md`: live long-turn
+  timeout proof, provider RPM limits, exotic model-invented import semantics,
+  external media quality, and human-approved Figma baselines.
+
 ## Related docs
 
 - `DESIGN_SYSTEM.md` — UI/backend blueprint  

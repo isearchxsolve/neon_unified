@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 import re
 import shutil
@@ -27,6 +28,22 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+
+LOG = logging.getLogger("neon.generation")
+MAX_DESCRIPTION_CHARS = 12_000
+
+
+class GenerationError(RuntimeError):
+    """Base class for generation failures that callers can handle explicitly."""
+
+
+class GenerationInputError(GenerationError, ValueError):
+    """Raised when a public generation input is malformed or unsafe."""
+
+
+class GeneratedPathError(GenerationError, ValueError):
+    """Raised when an agent attempts to write outside the requested project."""
 
 # =============================================================================
 # Stack & Surface Contracts
@@ -305,6 +322,7 @@ class GenerationResult:
     test_output: Optional[TestRunResult] = None
     qa_output: Optional[Any] = None
     repair_rounds: int = 0
+    run_id: str = ""
 
 
 ProgressCb = Optional[Callable[[str, str], None]]
@@ -374,8 +392,23 @@ def _strip_fences(text: str) -> str:
 
 
 def _safe_write(project_dir: Path, rel: str, content: str, errors: List[str]) -> bool:
-    rel = rel.strip().lstrip("/\\")
-    if not rel or ".." in rel.split("/"):
+    """Atomically write a generated relative file after path and syntax checks."""
+    if not isinstance(rel, str) or not isinstance(content, str):
+        errors.append("rejected non-string generated path or content")
+        return False
+    raw_rel = rel.strip().replace("\\", "/")
+    raw_path = Path(raw_rel)
+    if (
+        not raw_rel
+        or raw_rel.startswith("/")
+        or raw_path.is_absolute()
+        or re.match(r"^[A-Za-z]:/", raw_rel)
+    ):
+        errors.append(f"rejected path: {raw_rel}")
+        return False
+    rel = raw_rel.lstrip("/")
+    pure = Path(rel)
+    if not rel or pure.is_absolute() or ".." in pure.parts:
         errors.append(f"rejected path: {rel}")
         return False
     content = _strip_fences(content)
@@ -391,8 +424,14 @@ def _safe_write(project_dir: Path, rel: str, content: str, errors: List[str]) ->
     except ValueError:
         errors.append(f"path escape: {rel}")
         return False
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(content, encoding="utf-8")
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(dest)
+    except OSError as e:
+        errors.append(f"write failed {rel}: {e}")
+        return False
     return True
 
 
@@ -867,13 +906,22 @@ def _split_multi_file(raw: str, default_prefix: str = "") -> Dict[str, str]:
 # =============================================================================
 
 def scaffold(stack: str, project_dir: Path, ctx: Dict[str, Any]) -> List[str]:
+    """Create a deterministic, syntactically valid base project for a stack."""
+    if stack not in SUPPORTED_STACKS:
+        raise GenerationInputError(f"Unsupported stack: {stack}")
+    if not isinstance(ctx, dict):
+        raise GenerationInputError("generation context must be a dictionary")
+    if not isinstance(ctx.get("project_name"), str) or not ctx["project_name"].strip():
+        raise GenerationInputError("generation context requires a non-empty project_name")
     created = []
-    name = ctx["project_name"]
+    name = ctx["project_name"].strip()
+    package_name = re.sub(r"[^a-z0-9_]+", "_", name.lower()).strip("_") or "neon_app"
+    npm_name = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-") or "neon-app"
 
     def w(rel: str, content: str):
-        p = project_dir / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
+        errors: List[str] = []
+        if not _safe_write(project_dir, rel, content, errors):
+            raise GeneratedPathError("; ".join(errors))
         created.append(rel)
 
     if stack == "fastapi-react":
@@ -895,7 +943,7 @@ def health():
 ''')
         w("backend/__init__.py", "")
         w("frontend/package.json", f'''{{
-  "name": "{name.lower().replace(" ", "-")}",
+  "name": "{npm_name}",
   "private": true,
   "version": "0.1.0",
   "scripts": {{ "dev": "vite", "build": "vite build", "preview": "vite preview" }},
@@ -980,7 +1028,7 @@ export default defineConfig({ plugins: [react()], server: { port: 5173 } });
 
     elif stack == "expo-node":
         w("package.json", f'''{{
-  "name": "{name.lower().replace(" ", "-")}",
+  "name": "{npm_name}",
   "version": "0.1.0",
   "main": "expo-router/entry",
   "scripts": {{ "start": "expo start", "android": "expo start --android", "ios": "expo start --ios" }},
@@ -1020,7 +1068,7 @@ server.listen(process.env.PORT || 4000);
 ''')
 
     elif stack == "flutter-fastapi":
-        w("pubspec.yaml", f'''name: {re.sub(r"[^a-z0-9_]", "_", name.lower())}
+        w("pubspec.yaml", f'''name: {package_name}
 description: {name}
 publish_to: "none"
 version: 0.1.0
@@ -1052,7 +1100,7 @@ def health():
 
     elif stack == "nextjs-postgres":
         w("package.json", f'''{{
-  "name": "{name.lower().replace(" ", "-")}",
+  "name": "{npm_name}",
   "private": true,
   "scripts": {{ "dev": "next dev", "build": "next build", "start": "next start" }},
   "dependencies": {{
@@ -1100,8 +1148,12 @@ class GenerationOrchestratorV5:
     """
 
     def __init__(self, pool: Any, config: Dict[str, Any]):
+        if config is None:
+            config = {}
+        if not isinstance(config, dict):
+            raise GenerationInputError("generator config must be a dictionary")
         self.pool = pool
-        self.config = config
+        self.config = dict(config)
 
     def _prog(self, cb: ProgressCb, phase: str, msg: str):
         if cb:
@@ -1353,13 +1405,29 @@ class GenerationOrchestratorV5:
         stack: Optional[str] = None,
         on_progress: ProgressCb = None,
     ) -> GenerationResult:
+        if not isinstance(description, str):
+            raise GenerationInputError("description must be a string")
+        description = description.strip()
+        if not description:
+            raise GenerationInputError("description must not be empty")
+        if len(description) > MAX_DESCRIPTION_CHARS:
+            raise GenerationInputError(
+                f"description exceeds {MAX_DESCRIPTION_CHARS} characters"
+            )
+        if not isinstance(project_dir, (str, Path)):
+            raise GenerationInputError("project_dir must be a path string or Path")
+        if stack is not None and stack not in SUPPORTED_STACKS:
+            raise GenerationInputError(f"Unsupported stack: {stack}")
         stack = stack or detect_stack(description)
-        if stack not in SUPPORTED_STACKS:
-            stack = "fastapi-react"
 
         project_dir = Path(project_dir).resolve()
         project_dir.mkdir(parents=True, exist_ok=True)
         name = project_dir.name
+        run_id = uuid.uuid4().hex
+        LOG.info(
+            "generation_started run_id=%s stack=%s project_dir=%s",
+            run_id, stack, project_dir,
+        )
 
         ctx: Dict[str, Any] = {
             "project_name": name,
@@ -1374,7 +1442,9 @@ class GenerationOrchestratorV5:
         ctx["_entity_slug"] = surface["entity_slug"]
         ctx["_entity_pascal"] = surface["entity_pascal"]
 
-        result = GenerationResult(success=False, project_dir=project_dir, stack=stack)
+        result = GenerationResult(
+            success=False, project_dir=project_dir, stack=stack, run_id=run_id
+        )
 
         # 1. Scaffold
         self._prog(on_progress, "scaffold", f"Writing {stack} base…")
@@ -1529,5 +1599,9 @@ class GenerationOrchestratorV5:
         else:
             result.success = len(hard) == 0 and len(result.files_generated) >= 4
 
-        self._prog(on_progress, "verdict", f"success={result.success} files={len(result.files_generated)}")
+        LOG.info(
+            "generation_finished run_id=%s success=%s files=%s hard_errors=%s",
+            run_id, result.success, len(result.files_generated), len(hard),
+        )
+        self._prog(on_progress, "verdict", f"run_id={run_id} success={result.success} files={len(result.files_generated)}")
         return result

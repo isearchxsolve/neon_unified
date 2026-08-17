@@ -39,7 +39,9 @@ def main() -> int:
         if f.name.startswith("."):
             continue
         try:
-            ast.parse(f.read_text(encoding="utf-8"))
+            # Source files can legitimately carry a UTF-8 BOM on Windows.
+            # `utf-8-sig` accepts both BOM and non-BOM UTF-8 source.
+            ast.parse(f.read_text(encoding="utf-8-sig"))
             check(f"parse {f.name}", True)
         except SyntaxError as e:
             check(f"parse {f.name}", False, str(e))

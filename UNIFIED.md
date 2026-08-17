@@ -27,8 +27,8 @@ Single coherent package merging all prior artifacts, audits, and gap-closures.
 | EditTool ambiguous match warning | Present |
 | SearchTool outer walk break + ReDoS process isolation | Present |
 | `--model` help lists kimi-k2-thinking | Fixed |
-| TodoTool session state | Documented as intentional class-level for persist/restore |
-| STACK_SURFACE / primary entity (no forced "projects") | In generation_core |
+| TodoTool session state | **Fixed:** instance-owned board; agent-owned persistence/restore; cross-instance regression tests |
+| STACK_SURFACE / primary entity (no forced "projects") | **Verified:** authoritative `generation_core.stack_surface` contract with 1,130-case stack/entity regression matrix |
 | Import consistency **repair loop** (up to 3 rounds) | **Added** in unified generation_core |
 | Test failure **one repair pass** | **Added** in unified generation_core |
 | Soft UI NIM failure handling | In agent generation path |
@@ -79,6 +79,17 @@ These are **not** fully closable by more file merges alone:
 4. **Creative media quality** for oiioii-like output — external models/APIs.
 5. **Pixel-perfect vs Figma** — requires human-approved baselines; automation enforces them via QA self-heal.
 6. **Multi-instance TodoTool** class state — fine for single REPL; not multi-tenant.
+
+### Status update: code-closed gaps
+
+- **Multi-instance TodoTool state (item 6): closed.** Every TodoTool now owns
+  its board and counter; agent persistence, reset, gates, and permission
+  changes use that same instance. `tests/test_generator_contracts.py` proves
+  two boards cannot observe, clear, or advance each other's work.
+- **STACK_SURFACE/entity coordination: closed for all supported stacks.** The
+  authoritative generation-core contract is covered by the 1,130-case offline
+  matrix, including endpoint/entity alignment, manifests, idempotency, and
+  traversal/partial-write failure handling.
 
 ## Recommended next actions after merge
 

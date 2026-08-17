@@ -63,3 +63,4 @@
 [1;38;2;74;222;128m  [OK] [0m[38;2;226;232;240m  tester: [OK] 1 file(s)[0m
 [1;38;2;251;113;133m  [FAIL] [0m[1;38;2;241;245;249m  consistency: [FAIL] 3 issue(s) -- entering repair[0m
 [38;2;56;189;248m  · [0m[38;2;226;232;240m  repair: round 1: 1 left[0m
+[38;2;56;189;248m  · [0m[38;2;226;232;240m  repair: round 2: 1 left[0m

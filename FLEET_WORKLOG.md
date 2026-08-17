@@ -70,3 +70,8 @@
 - Live Flutter generation reached consistency with 3 issues. Inspection found `backend/core/` was being interpreted as a missing `backend.core.py` module, while `from backend.core import models` also requires `backend.core.models`.
 - Implemented package-directory-aware repair plus explicit `models` child-module detection. The first regression assertion expected one initializer but actual correct behavior creates both `backend/__init__.py` and `backend/core/__init__.py`: focused pytest failed exactly once (`assert 2 == 1`), while compilation passed.
 - Next: correct the expected structural count, rerun the suite, and continue waiting for the pre-fix live run's repair verdict.
+
+### [step 15] Import-repair structural fix verified
+- Corrected the regression expectation and reran the contract suite: **1,159/1,159 passed** in 9.01s. `ruff check` and `py_compile` also passed (exit 0).
+- The repair code now creates package initializers through the atomic safe-write path, never creates a sibling file for a real package directory, and retains a hard report until an imported `models` module actually exists.
+- Next: capture the pre-fix live run's final repair/test verdict, then report that its 3 initial consistency lines motivated the verified code fix.

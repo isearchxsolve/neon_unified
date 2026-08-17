@@ -1,0 +1,20 @@
+target-version = "py310"
+extend-exclude = [
+  ".git",
+  ".pytest_cache",
+  ".venv",
+  ".venv-litellm",
+  "_fleet_flutter_release_20260817",
+  "_fleet_flutter_release_attempt2_20260817",
+  "oiioii_clone_final",
+  "oiioii_clone_final2",
+  "oiioii_clone_final3",
+  "oiioii_clone_gen",
+  "_live_flutter_verification_20260817",
+]
+
+[lint]
+# Syntax errors and undefined names are zero-tolerance release blockers. The
+# legacy monolithic agent intentionally retains existing style debt; style
+# expansion is a separately reviewed change, not a CI false-positive source.
+select = ["E9", "F821"]

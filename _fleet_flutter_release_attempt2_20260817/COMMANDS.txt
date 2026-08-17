@@ -1,0 +1,2 @@
+/generate flutter-fastapi Build a habit tracker with auth, habit list, mark complete, and dashboard
+/exit

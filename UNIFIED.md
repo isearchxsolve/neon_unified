@@ -69,25 +69,29 @@ python neon_architect.py --project ./demo_app
 python sdlc_wrapper_full.py --project ./oiioii_clone --preset oiioii --max-outer 5 --max-inner 40
 ```
 
-## Remaining gaps (honest)
+## Remaining limitations (honest)
 
-These are **not** fully closable by more file merges alone:
+These are operational or product-quality limits, not defects that can be
+truthfully closed by another local file merge:
 
 1. **Live proof** of first-token timeout fix under long reasoning turns (operational verification).
 2. **True 429 / RPM** — quota, not code; use healthy keys / backoff.
 3. **Import repair may still leave 1–3 hard cases** on exotic layouts — structural scaffolds help; not 100%.
 4. **Creative media quality** for oiioii-like output — external models/APIs.
 5. **Pixel-perfect vs Figma** — requires human-approved baselines; automation enforces them via QA self-heal.
-6. **Multi-instance TodoTool** class state — fine for single REPL; not multi-tenant.
+6. **Flutter binary verification on this host.** This Windows machine has no
+   JDK or Android SDK and cannot build iOS. Generated Flutter source can be
+   checked here; Android/iOS build proof needs provisioned Android and macOS
+   runners respectively.
 
 ### Status update: code-closed gaps
 
-- **Multi-instance TodoTool state (item 6): closed.** Every TodoTool now owns
-  its board and counter; agent persistence, reset, gates, and permission
-  changes use that same instance. `tests/test_generator_contracts.py` proves
-  two boards cannot observe, clear, or advance each other's work.
+- **Multi-instance TodoTool state: closed.** Every TodoTool now owns its board
+  and counter. Restore validates and structurally copies persisted todo records,
+  so a restored board cannot mutate its source board. Regression tests prove
+  isolation, malformed-state rejection, and atomic preservation on failure.
 - **STACK_SURFACE/entity coordination: closed for all supported stacks.** The
-  authoritative generation-core contract is covered by the 1,130-case offline
+  authoritative generation-core contract is covered by the 1,158-case offline
   matrix, including endpoint/entity alignment, manifests, idempotency, and
   traversal/partial-write failure handling.
 

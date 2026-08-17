@@ -413,6 +413,11 @@ pytest --collect-only -q       # must report >= 1,000 collected tests
 pytest -q
 ```
 
+The repository release gate currently contains **1,158 distinct offline test
+cases**, including a smoke-marked subset of roughly 50 cases. CI runs the same
+pinned dependency install, release-blocking lint check, compilation, smoke
+gate, and full suite on every push and pull request.
+
 For the required live hard-stack check, use a fresh directory and one job per
 NIM key. Do not reuse a quota-starved partial run.
 
@@ -428,6 +433,10 @@ rounds, `[soft]` UI errors, hard errors, Problem-A route strings, first-token
 timeouts, and HTTP 429 count in the release log. A missing key, provider outage,
 or quota response is an operational blocker, not a successful verification.
 
+Use `FLEET_WORKLOG.md` as the append-only release monitor. It records command
+exits, evidence paths, and any unclosed limitations; do not substitute a failed
+or incomplete live run with a deterministic-scaffold success claim.
+
 ### Determinism and security
 
 - Base scaffolds and safe writes are deterministic: the same stack, project
@@ -441,7 +450,8 @@ or quota response is an operational blocker, not a successful verification.
   files untracked. CI runs without secrets and covers only offline behavior.
 - The current known limitations are maintained in `UNIFIED.md`: live long-turn
   timeout proof, provider RPM limits, exotic model-invented import semantics,
-  external media quality, and human-approved Figma baselines.
+  external media quality, human-approved Figma baselines, and this host's
+  Flutter toolchain limitation.
 
 ## Related docs
 

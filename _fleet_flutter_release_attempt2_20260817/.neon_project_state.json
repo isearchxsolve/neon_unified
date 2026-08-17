@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "goal": "Build '_fleet_flutter_release_attempt2_20260817': Build a habit tracker with auth, habit list, mark complete, and dashboard. The flutter-fastapi scaffold is already in place -- augment it, fix errors, add real NIM-powered features, and verify the full stack works.",
+  "phase": "planning",
+  "completed_phases": [],
+  "autopilot_active": false,
+  "autopilot_resume": false,
+  "sdlc_phase_idx": 0,
+  "stack": [],
+  "entrypoints": [],
+  "test_command": null,
+  "key_modules": [],
+  "last_failures": [],
+  "open_todos": [],
+  "decisions": [],
+  "blockers": [],
+  "next_action": null,
+  "research_notes": [],
+  "src_write_paths": [],
+  "acceptance_criteria": [],
+  "updated_at": "2026-08-17T20:17:17"
+}

@@ -413,7 +413,7 @@ pytest --collect-only -q       # must report >= 1,000 collected tests
 pytest -q
 ```
 
-The repository release gate currently contains **1,158 distinct offline test
+The repository release gate currently contains **1,159 distinct offline test
 cases**, including a smoke-marked subset of roughly 50 cases. CI runs the same
 pinned dependency install, release-blocking lint check, compilation, smoke
 gate, and full suite on every push and pull request.
@@ -432,6 +432,13 @@ Record the emitted `run_id`, `success=`, import-consistency lines, repair
 rounds, `[soft]` UI errors, hard errors, Problem-A route strings, first-token
 timeouts, and HTTP 429 count in the release log. A missing key, provider outage,
 or quota response is an operational blocker, not a successful verification.
+
+Latest live evidence (2026-08-17): the clean Flutter run
+`abfdea9d0f9b47dcb95768972213940d` completed with `success=False`. It logged
+no HTTP 429 or first-token timeout, but consistency went from 3 issues to 1
+after three rounds and generated tests still failed after one repair pass. The
+captured terminal evidence and follow-up root cause are recorded in
+`FLEET_WORKLOG.md`; a new fresh successful run remains a release requirement.
 
 Use `FLEET_WORKLOG.md` as the append-only release monitor. It records command
 exits, evidence paths, and any unclosed limitations; do not substitute a failed

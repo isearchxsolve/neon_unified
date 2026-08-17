@@ -74,9 +74,14 @@ python sdlc_wrapper_full.py --project ./oiioii_clone --preset oiioii --max-outer
 These are operational or product-quality limits, not defects that can be
 truthfully closed by another local file merge:
 
-1. **Live proof** of first-token timeout fix under long reasoning turns (operational verification).
+1. **Live proof remains partial.** The 2026-08-17 Flutter run completed several
+   slow long-turn phases without a logged first-token timeout, but did not
+   succeed overall; a clean successful long-turn release run is still required.
 2. **True 429 / RPM** — quota, not code; use healthy keys / backoff.
-3. **Import repair may still leave 1–3 hard cases** on exotic layouts — structural scaffolds help; not 100%.
+3. **Import repair may still leave hard cases** on exotic model-invented layouts.
+   The 2026-08-17 Flutter run reduced 3 issues to 1 after three rounds; package
+   versus module classification is now structurally fixed and regression-tested,
+   but semantic generated-app mismatches still need a fresh verification run.
 4. **Creative media quality** for oiioii-like output — external models/APIs.
 5. **Pixel-perfect vs Figma** — requires human-approved baselines; automation enforces them via QA self-heal.
 6. **Flutter binary verification on this host.** This Windows machine has no
@@ -91,14 +96,15 @@ truthfully closed by another local file merge:
   so a restored board cannot mutate its source board. Regression tests prove
   isolation, malformed-state rejection, and atomic preservation on failure.
 - **STACK_SURFACE/entity coordination: closed for all supported stacks.** The
-  authoritative generation-core contract is covered by the 1,158-case offline
+  authoritative generation-core contract is covered by the 1,159-case offline
   matrix, including endpoint/entity alignment, manifests, idempotency, and
   traversal/partial-write failure handling.
 
 ## Recommended next actions after merge
 
 1. Run one clean `fastapi-react` generate with a real NIM key.
-2. Run one `flutter-fastapi` or hard-stack generate; capture any remaining consistency lines.
+2. Run a new fresh `flutter-fastapi` generation after the package-repair fix;
+   capture consistency and generated-app test lines.
 3. Start preview → `qa_browser.py --update-baselines` → `qa_self_heal.py --use-full-agent`.
 4. Treat PROBLEM_TRACKER residual risks as the live reliability backlog.
 

@@ -75,3 +75,8 @@
 - Corrected the regression expectation and reran the contract suite: **1,159/1,159 passed** in 9.01s. `ruff check` and `py_compile` also passed (exit 0).
 - The repair code now creates package initializers through the atomic safe-write path, never creates a sibling file for a real package directory, and retains a hard report until an imported `models` module actually exists.
 - Next: capture the pre-fix live run's final repair/test verdict, then report that its 3 initial consistency lines motivated the verified code fix.
+
+### [step 16] Clean flutter-fastapi live generation completed with an honest failure
+- Fresh run `_fleet_flutter_release_attempt2_20260817` completed with `run_id=abfdea9d0f9b47dcb95768972213940d`, `success=False`, and 24 generated files; the full terminal evidence is `FLEET_LIVE_FLUTTER.stdout.log` in that directory.
+- Metrics: 0 logged first-token timeouts, 0 logged HTTP 429s, consistency **3 -> 1** after 3 repair rounds, one test-repair pass attempted and failed, 0 `[soft]` UI errors, and no logged Problem-A `/api/projects` string. Slow long-turn calls completed without being terminated.
+- Next: inspect the failed generated project directly, record the exact remaining errors, update docs/test counts, and rerun final package gates.

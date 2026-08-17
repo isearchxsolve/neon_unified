@@ -65,3 +65,8 @@
 - `python smoke_test.py` passed **39/39**; `pytest -m smoke -q` passed **62/62** in 5.56s; full pytest passed **1,158/1,158** in 6.57s; `py_compile` of the three principal modules passed (all exit 0).
 - The smoke subset is under two minutes and the full suite exceeds the 1,000-case requirement with behavior-based parameterization and explicit failure-path tests.
 - Next: await the live Flutter generation's own verdict and inspect its generated project before finalizing release evidence.
+
+### [step 14] Live import-repair defect identified and regression adjusted
+- Live Flutter generation reached consistency with 3 issues. Inspection found `backend/core/` was being interpreted as a missing `backend.core.py` module, while `from backend.core import models` also requires `backend.core.models`.
+- Implemented package-directory-aware repair plus explicit `models` child-module detection. The first regression assertion expected one initializer but actual correct behavior creates both `backend/__init__.py` and `backend/core/__init__.py`: focused pytest failed exactly once (`assert 2 == 1`), while compilation passed.
+- Next: correct the expected structural count, rerun the suite, and continue waiting for the pre-fix live run's repair verdict.

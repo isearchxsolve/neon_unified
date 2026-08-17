@@ -330,7 +330,8 @@ def test_import_repair_treats_existing_module_directory_as_package_not_sibling_f
         "backend/core/database.py: imports 'backend.core.models' but module not generated",
     ]
     result = gc.GenerationResult(False, tmp_path, "flutter-fastapi")
-    assert orchestrator._repair_imports({}, tmp_path, problems, result) == 1
+    assert orchestrator._repair_imports({}, tmp_path, problems, result) == 2
+    assert (tmp_path / "backend" / "__init__.py").is_file()
     assert (tmp_path / "backend" / "core" / "__init__.py").is_file()
     assert not (tmp_path / "backend" / "core.py").exists()
     assert orchestrator._import_consistency(tmp_path, result.files_generated) == [

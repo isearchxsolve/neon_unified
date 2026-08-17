@@ -1,0 +1,30 @@
+# secrets - never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+wallet*.json
+hosts.yml
+credentials*
+
+# deps / build
+node_modules/
+.venv/
+.venv*/
+venv/
+__pycache__/
+*.pyc
+.next/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
+# aider / tooling state
+.aider.*
+.gitignore.bak

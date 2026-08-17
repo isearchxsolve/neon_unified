@@ -1,0 +1,1 @@
+# Backend package for Neon Studio AI Animation Platform

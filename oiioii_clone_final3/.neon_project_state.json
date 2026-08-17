@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "goal": "Build an AI animation agent platform (oiioii-style) with full engineering surface: auth, projects, creative workflow orchestration (script -> character -> scene -> storyboard -> render -> sound), job system, asset store, MediaGenerationService using API keys from env, workflow/jobs/assets APIs, and a polished workspace UI with agent timeline and asset gallery. Handle media failures as structured job failures.\nAcceptance criteria (must eventually all pass):\n- [scaffold] Project scaffold exists\n- [architecture] ARCHITECTURE.md exists\n- [tests] Test suite exists\nCURRENT HARD FAILURES -- prioritize fixing these:\n- [scaffold] missing path: README.md\n- [architecture] missing path: ARCHITECTURE.md\n- [tests] missing path: tests\nWork in the project directory. Prefer editing existing code over rewriting everything. Use tools. Run tests. Do not claim completion until criteria are actually satisfied.",
+  "phase": "architecture",
+  "completed_phases": [
+    "planning"
+  ],
+  "autopilot_active": false,
+  "autopilot_resume": true,
+  "sdlc_phase_idx": 1,
+  "stack": [],
+  "entrypoints": [],
+  "test_command": null,
+  "key_modules": [],
+  "last_failures": [
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s =======================",
+    "program: python -m pytest --collect-only\nexit: 5\n============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-8.2.2, pluggy-1.6.0\nPySide6 6.11.1 -- Qt runtime 6.11.1 -- Qt compiled 6.11.1\nrootdir: D:\\neon_unified\\oiioii_clone_final3\nplugins: anyio-4.12.1, asyncio-0.23.5, cov-7.1.0, html-4.2.0, metadata-3.1.1, qt-4.5.0\nasyncio: mode=Mode.STRICT\ncollected 0 items\n========================= no tests collected in 0.09s ======================="
+  ],
+  "open_todos": [
+    {
+      "id": "T001",
+      "content": "Research oiioii.ai feature list and API capabilities",
+      "status": "pending"
+    },
+    {
+      "id": "T002",
+      "content": "Design authentication and user management system",
+      "status": "pending"
+    },
+    {
+      "id": "T003",
+      "content": "Design workflow orchestration API (script -> character -> scene -> storyboard -> render -> sound)",
+      "status": "pending"
+    },
+    {
+      "id": "T004",
+      "content": "Design job system and media failure handling",
+      "status": "pending"
+    },
+    {
+      "id": "T005",
+      "content": "Design asset store and MediaGenerationService",
+      "status": "pending"
+    }
+  ],
+  "decisions": [
+    "captured 10 acceptance criteria from PLAN.md"
+  ],
+  "blockers": [],
+  "next_action": "todo: Design asset store and MediaGenerationService",
+  "research_notes": [
+    "search:oiioii AI animation agent platform",
+    "browse:https://www.oiioii.ai/home",
+    "browse:https://www.oiioii.ai/blog/what-is-oiioii-ai",
+    "browse:https://www.prnewswire.com/news-releases/oiioii-ai-the-worlds-first-ai-animation-agent-platform-launches-in-the-us-302835937.html",
+    "search:oiioii.ai AI animation agent platform features API",
+    "browse:https://www.oiioii.ai/home",
+    "browse:https://www.oiioii.ai/blog/what-is-oiioii-ai"
+  ],
+  "src_write_paths": [
+    "backend/__init__.py",
+    "frontend/__init__.py"
+  ],
+  "acceptance_criteria": [
+    "[scaffold] Project scaffold exists with backend (FastAPI) and frontend (React) directories",
+    "[architecture] ARCHITECTURE.md documents system design, data models, API surface",
+    "[tests] Test suite exists and passes (pytest for backend, vitest/jest for frontend)",
+    "[auth] User signup/login endpoints with JWT, password hashing (bcrypt)",
+    "[projects] CRUD for animation projects per user",
+    "[workflow] Pipeline that chains script -> character -> scene -> storyboard -> render -> sound",
+    "[jobs] Async job queue with status tracking and structured failure handling",
+    "[assets] Asset store with download/upload, integrated into MediaGenerationService",
+    "[ui] Workspace page with agent timeline visualization and asset gallery",
+    "[secrets] All API keys loaded from environment, never hardcoded"
+  ],
+  "updated_at": "2026-08-05T10:46:04"
+}

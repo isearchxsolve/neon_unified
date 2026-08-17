@@ -1,0 +1,33 @@
+{
+  "base_url": "http://127.0.0.1:5173",
+  "viewport": [
+    1280,
+    720
+  ],
+  "must_have_selectors": [
+    "body"
+  ],
+  "visual_pages": [
+    {
+      "path": "/",
+      "name": "home",
+      "max_diff_ratio": 0.02
+    }
+  ],
+  "flows": [
+    {
+      "id": "home_loads",
+      "description": "Home loads",
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/"
+        },
+        {
+          "action": "assert_visible",
+          "selector": "body"
+        }
+      ]
+    }
+  ]
+}

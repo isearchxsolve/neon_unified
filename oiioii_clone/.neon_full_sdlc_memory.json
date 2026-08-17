@@ -1,0 +1,24 @@
+{
+  "goal_description": "Build an AI animation agent platform (oiioii-style) with full engineering surface: auth, projects, creative workflow orchestration (script \u2192 character \u2192 scene \u2192 storyboard \u2192 render \u2192 sound), job system, asset store, MediaGenerationService using API keys from env, workflow/jobs/assets APIs, and a polished workspace UI with agent timeline and asset gallery. Handle media failures as structured job failures.",
+  "completed_criteria": [
+    "architecture",
+    "media_service",
+    "workflow_service",
+    "job_service",
+    "workflows_api",
+    "assets_api",
+    "api_keys_env",
+    "stages",
+    "auth",
+    "projects",
+    "timeline_ui",
+    "job_status",
+    "qa_harness",
+    "qa_spec",
+    "qa_docs"
+  ],
+  "open_failures": [],
+  "decisions": [],
+  "last_errors": [],
+  "rounds_completed": 1
+}

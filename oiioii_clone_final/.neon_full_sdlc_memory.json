@@ -1,0 +1,27 @@
+{
+  "goal_description": "Build an AI animation agent platform (oiioii-style) with full engineering surface: auth, projects, creative workflow orchestration (script -> character -> scene -> storyboard -> render -> sound), job system, asset store, MediaGenerationService using API keys from env, workflow/jobs/assets APIs, and a polished workspace UI with agent timeline and asset gallery. Handle media failures as structured job failures.",
+  "completed_criteria": [
+    "scaffold",
+    "architecture",
+    "tests"
+  ],
+  "open_failures": [],
+  "decisions": [
+    "Outer 1: next focus scaffold, architecture",
+    "Outer 2: next focus scaffold, architecture",
+    "Outer 3: next focus scaffold, architecture",
+    "Outer 4: next focus scaffold, architecture",
+    "Outer 5: next focus scaffold, architecture"
+  ],
+  "last_errors": [
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument",
+    "turn error: [Errno 22] Invalid argument"
+  ],
+  "rounds_completed": 1
+}

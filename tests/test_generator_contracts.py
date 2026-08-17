@@ -317,3 +317,22 @@ def test_import_consistency_finds_and_repair_scaffolds_package_inits(tmp_path: P
     result = gc.GenerationResult(False, tmp_path, "fastapi-react")
     assert orchestrator._repair_imports({}, tmp_path, [], result) == 1
     assert (backend / "__init__.py").is_file()
+
+
+def test_import_repair_treats_existing_module_directory_as_package_not_sibling_file(tmp_path: Path) -> None:
+    database = tmp_path / "backend" / "core" / "database.py"
+    database.parent.mkdir(parents=True)
+    database.write_text("from backend.core import models\n", encoding="utf-8")
+    orchestrator = gc.GenerationOrchestratorV5(pool=None, config={})
+    problems = orchestrator._import_consistency(tmp_path, ["backend/core/database.py"])
+    assert problems == [
+        "backend/core/database.py: imports 'backend.core' but module not generated",
+        "backend/core/database.py: imports 'backend.core.models' but module not generated",
+    ]
+    result = gc.GenerationResult(False, tmp_path, "flutter-fastapi")
+    assert orchestrator._repair_imports({}, tmp_path, problems, result) == 1
+    assert (tmp_path / "backend" / "core" / "__init__.py").is_file()
+    assert not (tmp_path / "backend" / "core.py").exists()
+    assert orchestrator._import_consistency(tmp_path, result.files_generated) == [
+        "backend/core/database.py: imports 'backend.core.models' but module not generated"
+    ]

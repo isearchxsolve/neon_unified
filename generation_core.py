@@ -1260,7 +1260,19 @@ class GenerationOrchestratorV5:
                         if any(m.startswith(top + ".") or m == top for m in module_map):
                             if node.module not in module_map:
                                 problems.append(f"{rel}: imports '{node.module}' but module not generated")
-        return problems
+                    # `from backend.core import models` names a child module,
+                    # not merely an attribute.  Checking this common package
+                    # form prevents an initializer-only repair from claiming a
+                    # clean graph while Python still fails at import time.
+                    if node.module.startswith("backend."):
+                        for alias in node.names:
+                            if alias.name == "models":
+                                child_module = f"{node.module}.models"
+                                if child_module not in module_map:
+                                    problems.append(
+                                        f"{rel}: imports '{child_module}' but module not generated"
+                                    )
+        return list(dict.fromkeys(problems))
 
     def _repair_imports(
         self,
@@ -1277,18 +1289,30 @@ class GenerationOrchestratorV5:
             if "imports '" in p and "' but module not generated" in p:
                 mod = p.split("imports '", 1)[1].split("'", 1)[0]
                 missing_mods.append(mod)
-        # Always ensure package inits
-        for pkg in ("backend", "backend/services", "backend/routers", "tests"):
+        # Always ensure package inits. Also detect a reported module that is
+        # already a directory: it is a Python package and needs __init__.py,
+        # not a sibling `backend/core.py` file competing with that directory.
+        package_dirs = {"backend", "backend/services", "backend/routers", "tests"}
+        for mod in missing_mods:
+            package_dir = project_dir / mod.replace(".", "/")
+            if package_dir.is_dir():
+                package_dirs.add(str(package_dir.relative_to(project_dir)).replace("\\", "/"))
+        for pkg in sorted(package_dirs):
             init = project_dir / pkg / "__init__.py"
             if (project_dir / pkg).exists() and not init.exists():
-                init.write_text("", encoding="utf-8")
                 rel = f"{pkg}/__init__.py"
-                if rel not in result.files_generated:
-                    result.files_generated.append(rel)
-                fixed += 1
+                errs: List[str] = []
+                if _safe_write(project_dir, rel, "", errs):
+                    if rel not in result.files_generated:
+                        result.files_generated.append(rel)
+                    fixed += 1
+                else:
+                    result.warnings.extend(errs)
         agent = GenAgent(self.pool, self.config)
         agent.role = "import_repair"
         for mod in sorted(set(missing_mods))[:6]:
+            if (project_dir / mod.replace(".", "/")).is_dir():
+                continue
             rel = mod.replace(".", "/") + ".py"
             dest = project_dir / rel
             if dest.exists():

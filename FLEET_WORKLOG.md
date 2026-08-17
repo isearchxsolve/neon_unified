@@ -80,3 +80,13 @@
 - Fresh run `_fleet_flutter_release_attempt2_20260817` completed with `run_id=abfdea9d0f9b47dcb95768972213940d`, `success=False`, and 24 generated files; the full terminal evidence is `FLEET_LIVE_FLUTTER.stdout.log` in that directory.
 - Metrics: 0 logged first-token timeouts, 0 logged HTTP 429s, consistency **3 -> 1** after 3 repair rounds, one test-repair pass attempted and failed, 0 `[soft]` UI errors, and no logged Problem-A `/api/projects` string. Slow long-turn calls completed without being terminated.
 - Next: inspect the failed generated project directly, record the exact remaining errors, update docs/test counts, and rerun final package gates.
+
+### [step 17] Cross-framework test-repair escape blocked
+- Direct generated-project verification failed at `tests/conftest.py`: `ModuleNotFoundError: No module named 'flask_sqlalchemy'`; its test repair had attempted to introduce an `app/` Flask root into a Flutter/FastAPI project. Syntax compilation still passed, demonstrating why import/runtime checks are necessary.
+- `_repair_tests` now permits only stack-contract roots (`backend/`, `tests/` for FastAPI stacks) and warns on rejected paths. New regression proves `app/__init__.py` is rejected while approved backend/test files are retained; focused suite passed **1,160/1,160**, lint, compile, and smoke all passed.
+- Next: run final collection/full-suite evidence and report the live-generation residual as a release blocker requiring a new fresh run after these fixes.
+
+### [step 18] Final package verification complete; live release gate remains blocked
+- Final gates: **1,160 collected** in 1.72s; smoke marker **62/62** in 2.23s; full suite **1,160/1,160** in 6.34s; `ruff check .` passed (all exit 0). `smoke_test.py` also passed **39/39** in the preceding verification.
+- Documentation (`README.md`, `UNIFIED.md`) now records the exact failed live run and updated 1,160-test count. The package code changes are green, but a fresh successful flutter-fastapi live run is still required before truthfully declaring the system shippable.
+- Next: do not certify release until that fresh post-fix live generation clears consistency and generated-app tests on a provisioned Flutter build environment.

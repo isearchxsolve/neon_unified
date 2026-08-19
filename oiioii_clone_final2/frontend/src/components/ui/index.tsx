@@ -1,4 +1,4 @@
-import React, { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type HTMLAttributes } from 'react';
+import React, { forwardRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type HTMLAttributes } from 'react';
 import { tokens } from '../../theme/tokens';
 
 // Helper to merge class names
@@ -14,7 +14,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', loading, disabled, children, className, ...props }, ref) => {
+  ({ variant = 'primary', size = 'md', loading, disabled, children, className, onMouseEnter, onMouseLeave, onFocus, onBlur, ...props }, ref) => {
+    const [isHovered, setIsHovered] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
+
     const baseStyles: React.CSSProperties = {
       display: 'inline-flex',
       alignItems: 'center',
@@ -64,7 +67,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       danger: { backgroundColor: tokens.color.danger[700] },
     };
 
-    const focusRing = {
+    const focusRing: React.CSSProperties = {
       boxShadow: `0 0 0 3px ${tokens.color.primary[200]}`,
     };
 
@@ -72,6 +75,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ...baseStyles,
       ...sizeStyles[size],
       ...variantStyles[variant],
+      ...(isHovered && !disabled && !loading ? hoverStyles[variant] : {}),
+      ...(isFocused && !disabled && !loading ? focusRing : {}),
     } as React.CSSProperties;
 
     return (
@@ -80,10 +85,22 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={cx(className)}
         style={style}
         disabled={disabled || loading}
-        onMouseEnter={(e) => !disabled && !loading && Object.assign(e.currentTarget.style, hoverStyles[variant])}
-        onMouseLeave={(e) => !disabled && !loading && Object.assign(e.currentTarget.style, variantStyles[variant])}
-        onFocusVisible={(e) => Object.assign(e.currentTarget.style, focusRing)}
-        onBlur={(e) => Object.assign(e.currentTarget.style, variantStyles[variant])}
+        onMouseEnter={(e) => {
+          setIsHovered(true);
+          onMouseEnter?.(e);
+        }}
+        onMouseLeave={(e) => {
+          setIsHovered(false);
+          onMouseLeave?.(e);
+        }}
+        onFocus={(e) => {
+          setIsFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setIsFocused(false);
+          onBlur?.(e);
+        }}
         {...props}
       >
         {loading && (
@@ -124,7 +141,8 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, className, id, ...props }, ref) => {
+  ({ label, error, helperText, className, id, onFocus, onBlur, ...props }, ref) => {
+    const [isFocused, setIsFocused] = useState(false);
     const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
 
     const baseStyles: React.CSSProperties = {
@@ -140,17 +158,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       outline: 'none',
     };
 
-    const focusStyles = {
+    const focusStyles: React.CSSProperties = {
       borderColor: tokens.color.primary[500],
       boxShadow: `0 0 0 3px ${tokens.color.primary[100]}`,
     };
 
-    const errorStyles = {
+    const errorStyles: React.CSSProperties = {
       borderColor: tokens.color.danger[500],
       boxShadow: `0 0 0 3px ${tokens.color.danger[100]}`,
     };
 
-    const disabledStyles = {
+    const disabledStyles: React.CSSProperties = {
       backgroundColor: tokens.color.gray[100],
       color: tokens.color.gray[500],
       cursor: 'not-allowed',
@@ -159,7 +177,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const style = {
       ...baseStyles,
       ...(props.disabled ? disabledStyles : {}),
-      ...(error ? errorStyles : {}),
+      ...(error ? errorStyles : isFocused ? focusStyles : {}),
     } as React.CSSProperties;
 
     return (
@@ -182,8 +200,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           style={style}
-          onFocus={(e) => !props.disabled && !error && Object.assign(e.currentTarget.style, focusStyles)}
-          onBlur={(e) => !props.disabled && !error && Object.assign(e.currentTarget.style, { borderColor: tokens.color.gray[300], boxShadow: 'none' })}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
           aria-invalid={error ? 'true' : 'false'}
           aria-describedby={error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined}
           {...props}

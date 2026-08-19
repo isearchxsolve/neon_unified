@@ -1,6 +1,7 @@
-"""MediaGenerationService — API-key backed image/video/audio client."""
+"""MediaGenerationService -- API-key backed image/video/audio client."""
 from __future__ import annotations
 import os
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -18,17 +19,19 @@ class MediaResult:
     kind: str
     url: Optional[str] = None
     error: Optional[str] = None
+    file_size_bytes: int = 0
     raw: Dict[str, Any] = field(default_factory=dict)
 
 class MediaGenerationService:
     def __init__(self):
+        self._lock = threading.Lock()
         self.image_key = os.getenv("IMAGE_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
         self.video_key = os.getenv("VIDEO_API_KEY") or self.image_key
         self.audio_key = os.getenv("AUDIO_API_KEY") or self.image_key
 
     def generate(self, req: MediaRequest) -> MediaResult:
-        key = {"image": self.image_key, "video": self.video_key, "audio": self.audio_key}.get(req.kind, "")
-        if not key:
-            return MediaResult(ok=False, kind=req.kind, error=f"{req.kind.upper()}_API_KEY not set")
-        # TODO: wire real provider HTTP call here
-        return MediaResult(ok=False, kind=req.kind, error="provider call not configured")
+        with self._lock:
+            key = {"image": self.image_key, "video": self.video_key, "audio": self.audio_key}.get(req.kind, "")
+            if not key:
+                return MediaResult(ok=False, kind=req.kind, error=f"{req.kind.upper()}_API_KEY not set")
+            return MediaResult(ok=False, kind=req.kind, error="provider call not configured")

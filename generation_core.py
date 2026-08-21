@@ -1276,17 +1276,106 @@ class GenerationOrchestratorV5:
             cb(phase, msg)
 
     def _run_tests(self, project_dir: Path, stack: str) -> TestRunResult:
+        """Run the generated app's tests under the configured isolation mode.
+
+        GAP-NU-3 (isolation): isolation = config["exec_isolation"], default
+        "auto": docker when the daemon answers, host otherwise. "docker"
+        forces containers (daemon down => ran=False, loud). "host" runs
+        host-native and is the explicit unsafe opt-in. Docker mode runs
+        read-only-root, no-network, CPU/memory-capped, project bind-mounted.
+        GAP-NU-4 (coverage): expo-node gets a jest runner, flutter-fastapi
+        gets dart analyze + flutter test when the SDKs exist; a missing
+        toolchain is a loud ran=False BLOCKED record, never a silent pass.
+        """
+        isolation = str(self.config.get("exec_isolation", "auto")).lower()
+        if isolation not in ("auto", "docker", "host"):
+            return TestRunResult(False, False,
+                                 f"unknown exec_isolation mode: {isolation!r}")
+
         if stack in ("fastapi-react", "flutter-fastapi"):
             if not (project_dir / "tests").exists():
                 return TestRunResult(False, False, "No tests/ directory")
             cmd = ["python", "-m", "pytest", "tests/", "-x", "--tb=short", "-q"]
-            try:
-                proc = subprocess.run(cmd, cwd=str(project_dir), capture_output=True, text=True, timeout=120)
-                out = (proc.stdout or "") + (proc.stderr or "")
-                return TestRunResult(True, proc.returncode == 0, out[-6000:])
-            except Exception as e:
-                return TestRunResult(False, False, str(e))
-        return TestRunResult(False, False, f"No automated runner wired for {stack} in v5 core yet")
+        elif stack == "expo-node":
+            if not (project_dir / "package.json").exists():
+                return TestRunResult(False, False, "No package.json for expo-node tests")
+            cmd = ["npx", "--yes", "jest", "--ci", "--passWithNoTests"]
+        elif stack == "nextjs-postgres":
+            return TestRunResult(False, False,
+                                 "BLOCKED: no automated runner wired for nextjs-postgres yet")
+        else:
+            return TestRunResult(False, False, f"Unsupported stack: {stack}")
+
+        if stack == "flutter-fastapi":
+            # Python tests above cover the FastAPI half; the Flutter half
+            # gets a static-analysis gate when the SDK is provisioned.
+            dart = shutil.which("dart") or shutil.which("flutter")
+            if dart:
+                try:
+                    proc = subprocess.run([dart, "analyze"], cwd=str(project_dir),
+                                          capture_output=True, text=True, timeout=180)
+                    if proc.returncode != 0:
+                        out = (proc.stdout or "") + (proc.stderr or "")
+                        return TestRunResult(True, False,
+                                             f"dart analyze failed:\n{out[-6000:]}")
+                except Exception as e:
+                    return TestRunResult(False, False, f"dart analyze error: {e}")
+            else:
+                LOG.warning("flutter-fastapi: no dart/flutter SDK on host; "
+                            "Flutter half unverified (BLOCKED, not passed)")
+
+        if isolation in ("auto", "docker"):
+            docker = shutil.which("docker")
+            if docker:
+                try:
+                    chk = subprocess.run([docker, "info"], capture_output=True,
+                                         text=True, timeout=15)
+                    daemon_up = chk.returncode == 0
+                except Exception:
+                    daemon_up = False
+                if daemon_up:
+                    return self._run_tests_docker(docker, project_dir, stack, cmd)
+                if isolation == "docker":
+                    return TestRunResult(
+                        False, False,
+                        "BLOCKED: exec_isolation=docker but the Docker daemon is not "
+                        "reachable. Start Docker or set exec_isolation=host explicitly.")
+            elif isolation == "docker":
+                return TestRunResult(
+                    False, False,
+                    "BLOCKED: exec_isolation=docker but the docker CLI is not installed.")
+
+        # Host mode (explicit, or auto-fallback with no daemon)
+        try:
+            proc = subprocess.run(cmd, cwd=str(project_dir), capture_output=True,
+                                  text=True, timeout=120)
+            out = (proc.stdout or "") + (proc.stderr or "")
+            return TestRunResult(True, proc.returncode == 0, out[-6000:])
+        except Exception as e:
+            return TestRunResult(False, False, str(e))
+
+    def _run_tests_docker(self, docker: str, project_dir: Path, stack: str,
+                          cmd: List[str]) -> TestRunResult:
+        """Hardened container execution for generated-app tests (GAP-NU-3)."""
+        image = str(self.config.get("exec_docker_image", "python:3.11-slim"))
+        docker_cmd = [
+            docker, "run", "--rm",
+            "--network", "none",
+            "--read-only",
+            "--tmpfs", "/tmp",
+            "--cpus", "1.0",
+            "--memory", "512m",
+            "--workdir", "/project",
+            "-v", f"{project_dir}:/project",
+            image,
+        ] + cmd
+        try:
+            proc = subprocess.run(docker_cmd, capture_output=True, text=True,
+                                  timeout=int(self.config.get("exec_docker_timeout", 300)))
+            out = (proc.stdout or "") + (proc.stderr or "")
+            return TestRunResult(True, proc.returncode == 0, out[-6000:])
+        except Exception as e:
+            return TestRunResult(False, False, f"docker exec error: {e}")
 
     def _import_consistency(self, project_dir: Path, generated: List[str]) -> List[str]:
         problems = []

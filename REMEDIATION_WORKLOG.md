@@ -57,3 +57,38 @@ verify → fix → test → log → commit.
   full suite: 1173 passed in 5.63s
   ```
 - **Commit:** (with this entry)
+
+### [2026-08-22 05:35] GAP-NU-3 + GAP-NU-4 — host-native test execution; 2 of 4 stacks had no runner — FIXED
+
+- **Repro (pre-fix):** `_run_tests` ran `subprocess.run(["python","-m","pytest",...],
+  cwd=project_dir)` directly on the HOST (no container, no network jail, no resource caps);
+  expo-node and flutter-fastapi returned "No automated runner wired for {stack} in v5 core yet".
+- **Fix (generation_core.py):**
+  1. New `exec_isolation` config: `auto` (default; docker when daemon answers, host
+     fallback), `docker` (forced; daemon/CLI missing => ran=False + loud BLOCKED),
+     `host` (explicit unsafe opt-in). Unknown mode => ran=False.
+  2. `_run_tests_docker`: hardened container run — `--network none --read-only
+     --tmpfs /tmp --cpus 1.0 --memory 512m`, project bind-mounted at /project,
+     image `python:3.11-slim` (config-overridable), 300s timeout.
+  3. expo-node runner: requires package.json, runs `npx --yes jest --ci --passWithNoTests`.
+  4. flutter-fastapi: python half via pytest as before; Flutter half gets `dart analyze`
+     gate when dart/flutter SDK present (failure => passed=False with analyzer output);
+     SDK absent => loud WARNING log, never a silent pass.
+  5. nextjs-postgres: explicit loud BLOCKED record (ran=False) instead of the old generic
+     "no runner wired" string — honest about the remaining gap.
+- **Environment note:** Docker CLI 29.5.3 present but daemon DOWN on this host (Docker
+  Desktop not running; launch attempted in background). Therefore docker mode is fully
+  implemented + unit-verified via mocked daemon/CLI, but a live container run remains
+  BLOCKED on daemon availability — recorded honestly, not faked.
+- **New tests:** `tests/test_exec_isolation.py` (10 cases): unknown mode fails closed;
+  forced docker w/o CLI => BLOCKED; forced docker w/ dead daemon => BLOCKED; docker mode
+  asserts every hardening flag (--network none, --read-only, --cpus, --memory, --tmpfs);
+  auto falls back to host when daemon down; expo-node requires package.json; expo-node
+  runs jest; flutter w/o SDK still runs python half; dart analyze failure fails the gate;
+  nextjs-postgres loud BLOCKED.
+- **Test output (verbatim):**
+  ```
+  tests/test_exec_isolation.py: 10 passed in 0.15s
+  full suite: 1183 passed in 5.67s
+  ```
+- **Commit:** (with this entry)

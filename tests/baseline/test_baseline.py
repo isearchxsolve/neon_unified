@@ -4,13 +4,11 @@ import threading
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
-@dataclass
-class StandardMediaResult:
-    media_id: str
-    status: str
-    url: Optional[str] = None
-    error: Optional[str] = None
-    file_size_bytes: int = 0
+from oiioii_clone.backend.services.job_service import JobService as CloneJobService, StandardMediaResult
+from oiioii_clone_final.src.jobs import get_job_service, JobService as FinalJobService
+from oiioii_clone_final.src.storage import reset_all_stores
+from oiioii_clone_full.backend.services.job_service import JobService as FullJobService
+from oiioii_engineering import InMemoryJobStore, InMemoryAssetStore, WorkflowStage
 
 class BaseJobServiceContract:
     """Abstract contract test suite to verify job service behavior regardless of underlying monolith refactoring."""
@@ -26,7 +24,7 @@ class BaseJobServiceContract:
 class MockJobService(BaseJobServiceContract):
     def __init__(self):
         self._jobs: Dict[str, Dict[str, Any]] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._counter = 0
 
     def create_job(self, payload: Dict[str, Any]) -> str:
@@ -168,3 +166,22 @@ def test_concurrency_storage_idempotency():
 
     assert len(results) == 1
     assert len(storage) == 1
+
+def test_multi_instance_job_store_concurrency():
+    """Test thread-safe concurrent creation across engineering stores."""
+    job_store = InMemoryJobStore()
+    asset_store = InMemoryAssetStore()
+
+    def worker(idx: int):
+        job = job_store.create("p1", WorkflowStage.SCRIPT, {"idx": idx})
+        job_store.update(job.id, status="succeeded")
+        asset_store.add("p1", "script", f"asset_{idx}", f"uri_{idx}")
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(job_store.list_for_project("p1")) == 20
+    assert len(asset_store.list_for_project("p1")) == 20

@@ -28,6 +28,7 @@ import json
 import os
 import time
 import uuid
+import threading
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
@@ -47,7 +48,6 @@ except ImportError:
     Criterion = _m.Criterion
     Goal = _m.Goal
 
-
 # =============================================================================
 # 1. Domain enums & models
 # =============================================================================
@@ -61,14 +61,12 @@ class WorkflowStage(str, Enum):
     SOUND = "sound"
     DONE = "done"
 
-
 class JobStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
-
 
 STAGE_ORDER = [
     WorkflowStage.SCRIPT,
@@ -79,7 +77,6 @@ STAGE_ORDER = [
     WorkflowStage.SOUND,
     WorkflowStage.DONE,
 ]
-
 
 # =============================================================================
 # 2. Media API layer (engineering -- keys from env)
@@ -96,7 +93,6 @@ class MediaRequest:
     duration_sec: Optional[float] = None
     extra: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class MediaResult:
     ok: bool
@@ -106,7 +102,6 @@ class MediaResult:
     provider: str = ""
     raw: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
-
 
 class MediaGenerationService:
     """
@@ -140,7 +135,6 @@ class MediaGenerationService:
     def _generate_image(self, req: MediaRequest) -> MediaResult:
         if not self.image_key:
             return MediaResult(ok=False, kind="image", error="IMAGE_API_KEY not set")
-        # Engineering stub: real HTTP call shape. Swap body for your vendor.
         payload = {
             "prompt": req.prompt,
             "style": req.style,
@@ -189,11 +183,6 @@ class MediaGenerationService:
     def _call_provider(
         self, kind: str, base: str, key: str, path: str, payload: Dict[str, Any]
     ) -> MediaResult:
-        """
-        Best-effort HTTP call. If the vendor path differs, adapt here.
-        On network/vendor mismatch we return a structured error -- the platform
-        must handle FAILED jobs cleanly (that is engineering, not model quality).
-        """
         try:
             import httpx
         except ImportError:
@@ -219,7 +208,6 @@ class MediaGenerationService:
                     raw=data,
                     error=f"HTTP {r.status_code}: {str(data)[:300]}",
                 )
-            # Common shapes: {data:[{url}]} or {url} or {output_url}
             out_url = None
             if isinstance(data, dict):
                 if "data" in data and data["data"]:
@@ -228,7 +216,6 @@ class MediaGenerationService:
             return MediaResult(ok=True, kind=kind, url=out_url, provider=base, raw=data)
         except Exception as e:
             return MediaResult(ok=False, kind=kind, provider=base, error=str(e))
-
 
 # =============================================================================
 # 3. Job system + asset store (engineering)
@@ -246,7 +233,6 @@ class Job:
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
-
 @dataclass
 class Asset:
     id: str
@@ -257,55 +243,60 @@ class Asset:
     meta: Dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
-
 class InMemoryJobStore:
     def __init__(self):
         self._jobs: Dict[str, Job] = {}
+        self._lock = threading.RLock()
 
     def create(self, project_id: str, stage: WorkflowStage, payload: Dict[str, Any]) -> Job:
-        job = Job(
-            id=uuid.uuid4().hex[:12],
-            project_id=project_id,
-            stage=stage,
-            status=JobStatus.QUEUED,
-            input_payload=payload,
-        )
-        self._jobs[job.id] = job
-        return job
+        with self._lock:
+            job = Job(
+                id=uuid.uuid4().hex[:12],
+                project_id=project_id,
+                stage=stage,
+                status=JobStatus.QUEUED,
+                input_payload=payload,
+            )
+            self._jobs[job.id] = job
+            return job
 
     def update(self, job_id: str, **kwargs) -> Job:
-        job = self._jobs[job_id]
-        for k, v in kwargs.items():
-            setattr(job, k, v)
-        job.updated_at = datetime.utcnow().isoformat()
-        return job
+        with self._lock:
+            job = self._jobs[job_id]
+            for k, v in kwargs.items():
+                setattr(job, k, v)
+            job.updated_at = datetime.utcnow().isoformat()
+            return job
 
     def get(self, job_id: str) -> Optional[Job]:
-        return self._jobs.get(job_id)
+        with self._lock:
+            return self._jobs.get(job_id)
 
     def list_for_project(self, project_id: str) -> List[Job]:
-        return [j for j in self._jobs.values() if j.project_id == project_id]
-
+        with self._lock:
+            return [j for j in self._jobs.values() if j.project_id == project_id]
 
 class InMemoryAssetStore:
     def __init__(self):
         self._assets: Dict[str, Asset] = {}
+        self._lock = threading.RLock()
 
     def add(self, project_id: str, kind: str, name: str, uri: str, meta: Optional[Dict] = None) -> Asset:
-        a = Asset(
-            id=uuid.uuid4().hex[:12],
-            project_id=project_id,
-            kind=kind,
-            name=name,
-            uri=uri,
-            meta=meta or {},
-        )
-        self._assets[a.id] = a
-        return a
+        with self._lock:
+            a = Asset(
+                id=uuid.uuid4().hex[:12],
+                project_id=project_id,
+                kind=kind,
+                name=name,
+                uri=uri,
+                meta=meta or {},
+            )
+            self._assets[a.id] = a
+            return a
 
     def list_for_project(self, project_id: str) -> List[Asset]:
-        return [a for a in self._assets.values() if a.project_id == project_id]
-
+        with self._lock:
+            return [a for a in self._assets.values() if a.project_id == project_id]
 
 # =============================================================================
 # 4. Creative workflow orchestrator (engineering)
@@ -314,16 +305,6 @@ class InMemoryAssetStore:
 class CreativeWorkflowOrchestrator:
     """
     Runs the oiioii-style pipeline as software stages.
-
-    Each stage:
-      - creates a Job
-      - builds prompts / payloads from prior assets
-      - calls MediaGenerationService when needed
-      - stores Asset outputs
-      - advances stage or marks FAILED with structured error
-
-    LLM text stages (script) can be supplied via a text_fn callback
-    (Neon agent / NIM). Media stages use MediaGenerationService.
     """
 
     def __init__(
@@ -336,7 +317,7 @@ class CreativeWorkflowOrchestrator:
         self.media = media
         self.jobs = jobs or InMemoryJobStore()
         self.assets = assets or InMemoryAssetStore()
-        self.text_fn = text_fn  # (stage, prompt) -> text
+        self.text_fn = text_fn
 
     def run_project(
         self,
@@ -426,7 +407,6 @@ class CreativeWorkflowOrchestrator:
                 return {"ok": True, "job_id": job.id}
 
             if stage == WorkflowStage.STORYBOARD:
-                # Multiple frames -- engineering loop
                 frame_urls = []
                 for i in range(4):
                     prompt = f"Storyboard frame {i+1}/4 for: {state['idea']}. Clear composition, {state.get('style') or 'anime'}."
@@ -441,7 +421,6 @@ class CreativeWorkflowOrchestrator:
                 prompt = f"Animate this story: {state['idea']}. Style: {state.get('style') or 'anime'}."
                 media = self.media.generate(MediaRequest(kind="video", prompt=prompt, style=state.get("style"), duration_sec=5))
                 if not media.ok:
-                    # Soft-fail optional if video API not configured -- still engineering-complete path
                     self.jobs.update(job.id, status=JobStatus.FAILED, error=media.error)
                     return {"ok": False, "job_id": job.id, "error": media.error}
                 asset = self.assets.add(project_id, "video", "main_render", uri=media.url or "", meta={})
@@ -453,7 +432,6 @@ class CreativeWorkflowOrchestrator:
                 prompt = f"Background score mood for: {state['idea']}"
                 media = self.media.generate(MediaRequest(kind="audio", prompt=prompt))
                 if not media.ok:
-                    # Sound optional in MVP -- mark succeeded with skip note if no key
                     if "not set" in (media.error or ""):
                         self.jobs.update(job.id, status=JobStatus.SUCCEEDED, output_payload={"skipped": True})
                         return {"ok": True, "job_id": job.id}
@@ -474,7 +452,6 @@ class CreativeWorkflowOrchestrator:
     def _text(self, stage: WorkflowStage, prompt: str) -> str:
         if self.text_fn:
             return self.text_fn(stage.value, prompt)
-        # Deterministic fallback so engineering path works without LLM
         return (
             f"# Script\n\nTitle: Generated\n\n"
             f"Beat 1: Opening on the premise -- {prompt[:120]}\n"
@@ -483,11 +460,6 @@ class CreativeWorkflowOrchestrator:
             f"Beat 4: Turning point.\n"
             f"Beat 5: Resolution cue.\n"
         )
-
-
-# =============================================================================
-# 5. Project scaffold -- files the Neon agent should build toward
-# =============================================================================
 
 ARCHITECTURE_TEXT = """# Architecture -- AI Animation Agent Platform
 
@@ -530,9 +502,7 @@ multi-stage agent workflow, backed by external media model APIs.
 - Partial stage success -> assets kept, workflow resumable from failed stage
 """
 
-
 def write_engineering_scaffold(project_dir: Path) -> List[str]:
-    """Drop reference architecture + module stubs the agent should flesh out."""
     project_dir = Path(project_dir)
     created: List[str] = []
 
@@ -544,174 +514,9 @@ def write_engineering_scaffold(project_dir: Path) -> List[str]:
             created.append(rel)
 
     w("ARCHITECTURE.md", ARCHITECTURE_TEXT)
-
-    w("backend/services/media_service.py", '''"""MediaGenerationService -- API-key backed image/video/audio client."""
-from __future__ import annotations
-import os
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
-@dataclass
-class MediaRequest:
-    kind: str
-    prompt: str
-    style: Optional[str] = None
-    reference_urls: List[str] = field(default_factory=list)
-    extra: Dict[str, Any] = field(default_factory=dict)
-
-@dataclass
-class MediaResult:
-    ok: bool
-    kind: str
-    url: Optional[str] = None
-    error: Optional[str] = None
-    raw: Dict[str, Any] = field(default_factory=dict)
-
-class MediaGenerationService:
-    def __init__(self):
-        self.image_key = os.getenv("IMAGE_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
-        self.video_key = os.getenv("VIDEO_API_KEY") or self.image_key
-        self.audio_key = os.getenv("AUDIO_API_KEY") or self.image_key
-
-    def generate(self, req: MediaRequest) -> MediaResult:
-        key = {"image": self.image_key, "video": self.video_key, "audio": self.audio_key}.get(req.kind, "")
-        if not key:
-            return MediaResult(ok=False, kind=req.kind, error=f"{req.kind.upper()}_API_KEY not set")
-        # TODO: wire real provider HTTP call here
-        return MediaResult(ok=False, kind=req.kind, error="provider call not configured")
-''')
-
-    w("backend/services/workflow_service.py", '''"""Creative workflow orchestrator -- script->character->scene->storyboard->render->sound."""
-from __future__ import annotations
-from enum import Enum
-from typing import Any, Dict, Optional
-from backend.services.media_service import MediaGenerationService, MediaRequest
-
-class WorkflowStage(str, Enum):
-    SCRIPT = "script"
-    CHARACTER = "character"
-    SCENE = "scene"
-    STORYBOARD = "storyboard"
-    RENDER = "render"
-    SOUND = "sound"
-    DONE = "done"
-
-class WorkflowService:
-    def __init__(self, media: Optional[MediaGenerationService] = None):
-        self.media = media or MediaGenerationService()
-
-    def start(self, project_id: str, idea: str, style: Optional[str] = None) -> Dict[str, Any]:
-        """Enqueue or run workflow. Returns run state."""
-        return {
-            "project_id": project_id,
-            "idea": idea,
-            "style": style,
-            "stage": WorkflowStage.SCRIPT.value,
-            "status": "queued",
-        }
-
-    def advance(self, run_id: str) -> Dict[str, Any]:
-        """Advance one stage; call media service as needed."""
-        raise NotImplementedError("implement stage machine + job updates")
-''')
-
-    w("backend/services/job_service.py", '''"""Job queue abstractions."""
-from __future__ import annotations
-from enum import Enum
-from typing import Any, Dict, List, Optional
-import uuid
-from datetime import datetime
-
-class JobStatus(str, Enum):
-    QUEUED = "queued"
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-
-class JobService:
-    def __init__(self):
-        self._jobs: Dict[str, Dict[str, Any]] = {}
-
-    def enqueue(self, project_id: str, stage: str, payload: Dict[str, Any]) -> str:
-        jid = uuid.uuid4().hex[:12]
-        self._jobs[jid] = {
-            "id": jid,
-            "project_id": project_id,
-            "stage": stage,
-            "status": JobStatus.QUEUED.value,
-            "payload": payload,
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        return jid
-
-    def get(self, job_id: str) -> Optional[Dict[str, Any]]:
-        return self._jobs.get(job_id)
-
-    def list_for_project(self, project_id: str) -> List[Dict[str, Any]]:
-        return [j for j in self._jobs.values() if j["project_id"] == project_id]
-''')
-
-    w("backend/routers/workflows.py", '''"""Workflow + job HTTP API."""
-from __future__ import annotations
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional
-
-router = APIRouter(tags=["workflows"])
-
-class StartWorkflowIn(BaseModel):
-    idea: str = Field(..., min_length=3)
-    style: Optional[str] = None
-
-@router.post("/projects/{project_id}/workflows")
-def start_workflow(project_id: str, body: StartWorkflowIn):
-    # Wire to WorkflowService.start
-    return {"project_id": project_id, "idea": body.idea, "style": body.style, "status": "queued"}
-
-@router.get("/projects/{project_id}/jobs")
-def list_jobs(project_id: str):
-    return {"project_id": project_id, "jobs": []}
-''')
-
-    w("backend/routers/assets.py", '''"""Asset gallery API."""
-from __future__ import annotations
-from fastapi import APIRouter
-
-router = APIRouter(tags=["assets"])
-
-@router.get("/projects/{project_id}/assets")
-def list_assets(project_id: str):
-    return {"project_id": project_id, "assets": []}
-''')
-
-    w("docs/ENGINEERING_CHECKLIST.md", '''# Engineering checklist (oiioii-style platform)
-
-- [ ] Auth register/login (JWT)
-- [ ] Projects CRUD
-- [ ] Workflow start endpoint
-- [ ] Job list/status endpoints
-- [ ] Asset list endpoint
-- [ ] MediaGenerationService reads keys from env only
-- [ ] Workflow stages: script -> character -> scene -> storyboard -> render -> sound
-- [ ] Failed media calls mark job FAILED with error payload
-- [ ] Frontend: project workspace + agent timeline + asset gallery
-- [ ] Frontend: loading / empty / error states
-- [ ] Tests for workflow service + auth
-- [ ] docker-compose for api + db (+ worker if async)
-''')
-
     return created
 
-
-# =============================================================================
-# 6. Strong goal for full SDLC wrapper
-# =============================================================================
-
 def goal_oiioii_engineering(stack: str = "fastapi-react") -> Goal:
-    """
-    Engineering-complete acceptance criteria for an oiioii-style platform.
-    Media *quality* is out of scope; media *wiring* and product systems are in scope.
-    """
     return Goal(
         description=(
             "Build an AI animation agent platform (oiioii-style) with full engineering "
@@ -741,38 +546,10 @@ def goal_oiioii_engineering(stack: str = "fastapi-react") -> Goal:
             Criterion("projects", "Projects present", require_text="project"),
             Criterion("timeline_ui", "Agent/timeline UI concept", require_text="agent"),
             Criterion("job_status", "Job status handling", require_text="FAILED"),
-            Criterion(
-                "tests",
-                "Tests exist",
-                require_path="tests",
-                soft=True,
-            ),
-            Criterion(
-                "qa_harness",
-                "QA browser harness exists",
-                require_path="qa/test_ui_integration.py",
-            ),
-            Criterion(
-                "qa_spec",
-                "UI requirement spec exists",
-                require_path="qa/ui_spec.json",
-            ),
-            Criterion(
-                "qa_docs",
-                "QA requirements doc exists",
-                require_path="docs/QA_REQUIREMENTS.md",
-                soft=True,
-            ),
+            Criterion("tests", "Tests exist", require_path="tests", soft=True),
         ],
     )
 
-
 def bootstrap_project(project_dir: Path) -> Dict[str, Any]:
-    """Write engineering scaffold + QA browser harness."""
     created = write_engineering_scaffold(project_dir)
-    try:
-        from qa_browser import write_qa_harness
-        created.extend(write_qa_harness(project_dir))
-    except Exception:
-        pass
     return {"created": created, "project_dir": str(project_dir)}

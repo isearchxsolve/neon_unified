@@ -27,7 +27,7 @@ class StandardMediaResult:
 class JobService:
     def __init__(self):
         self._jobs: Dict[str, Dict[str, Any]] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._counter = 0
 
     def enqueue(self, project_id: str, stage: str, payload: Dict[str, Any]) -> str:

@@ -5,17 +5,16 @@ Provides thread-safe storage abstraction for users, projects, workflows, jobs, a
 """
 
 from typing import Dict, List, Optional, TypeVar, Generic
-from threading import Lock
+from threading import RLock
 
 T = TypeVar("T")
 
-
 class InMemoryStorage(Generic[T]):
-    """Thread-safe in-memory storage."""
+    """Thread-safe in-memory storage using re-entrant locks."""
 
     def __init__(self):
         self._store: Dict[str, T] = {}
-        self._lock = Lock()
+        self._lock = RLock()
 
     def add(self, key: str, item: T) -> None:
         """Add an item to storage."""
@@ -55,7 +54,6 @@ class InMemoryStorage(Generic[T]):
         with self._lock:
             return [item for item in self._store.values() if predicate(item)]
 
-
 # Global storage instances
 users_store: InMemoryStorage = InMemoryStorage()
 projects_store: InMemoryStorage = InMemoryStorage()
@@ -63,3 +61,12 @@ workflows_store: InMemoryStorage = InMemoryStorage()
 jobs_store: InMemoryStorage = InMemoryStorage()
 assets_store: InMemoryStorage = InMemoryStorage()
 sessions_store: InMemoryStorage = InMemoryStorage()
+
+def reset_all_stores() -> None:
+    """Utility to clear all global stores between tests or request boundaries."""
+    users_store.clear()
+    projects_store.clear()
+    workflows_store.clear()
+    jobs_store.clear()
+    assets_store.clear()
+    sessions_store.clear()

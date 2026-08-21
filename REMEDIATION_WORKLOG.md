@@ -92,3 +92,37 @@ verify → fix → test → log → commit.
   full suite: 1183 passed in 5.67s
   ```
 - **Commit:** (with this entry)
+
+### [2026-08-22 06:10] GAP-NU-5 — flagship oiioii_clone_final output was a hollow shell — FIXED
+
+- **Repro (pre-fix):** `oiioii_clone_final/backend/main.py` = 1 line
+  (`from typing import Optional, List`); `src/api.py` and `src/workflows.py` = 1-line
+  comments; `tests/test_api.py` and `tests/test_workflows.py` = 1-line comments;
+  the app's own suite had 2 genuine failures (46 passed, 2 failed).
+- **Root cause of the 2 failures:** the generated tests were self-contradictory —
+  `test_complete_job_fails_for_non_running_job` requires complete_job(PENDING)=False while
+  `test_start_job_fails_for_completed_job` / `test_cancel_job_fails_for_completed_job`
+  called complete_job directly on a PENDING job and expected it to succeed. The service's
+  strict PENDING->RUNNING->COMPLETED state machine is the correct contract; the two tests
+  forgot `start_job`. Fixed the TESTS (service untouched), per rule 7 (fix wrong tests AND
+  log why).
+- **Fix (completed the app instead of renaming — tests/baseline depends on this dir name):**
+  1. `src/workflows.py`: full thread-safe WorkflowService (create/get/list/advance/
+     attach_job/deactivate) over workflows_store + get_workflow_service singleton.
+  2. `src/api.py`: complete FastAPI layer — register/login/logout, project CRUD with
+     ownership enforcement (403 for non-owners), workflow create/advance, job
+     create/start/complete/cancel, Bearer-token auth dependency (401 without), pydantic
+     request models, stage validation (422 on unknown).
+  3. `backend/main.py`: real entrypoint (`create_app()` + CORS + /api/health).
+  4. `tests/test_api.py`: 9 real TestClient integration tests (no mocks) incl. auth
+     enforcement, ownership, workflow lifecycle, job lifecycle, 409 on illegal transitions.
+  5. `tests/test_workflows.py`: 7 WorkflowService unit tests.
+  6. `frontend/styles.css`: already had full workspace CSS (earlier wc -l 0 was a
+     line-counting artifact of a single-line minified file — verified content present).
+- **Test output (verbatim):**
+  ```
+  oiioii_clone_final/tests: 63 passed in 2.10s   (was 46 passed, 2 failed)
+  boot check: health {'status': 'ok'}; unauth /api/projects -> 401
+  full repo suite: 1183 passed in 5.43s
+  ```
+- **Commit:** (with this entry)

@@ -124,6 +124,7 @@ class TestJobService:
     def test_start_job_fails_for_completed_job(self):
         """Test that start_job returns False for already completed job."""
         job = self.service.create_job(project_id="proj-1", stage=PipelineStage.SCRIPT)
+        self.service.start_job(job.id)
         self.service.complete_job(job.id, {"output": "data"})
         
         result = self.service.start_job(job.id)
@@ -185,6 +186,7 @@ class TestJobService:
     def test_cancel_job_fails_for_completed_job(self):
         """Test that cancel_job returns False for completed job."""
         job = self.service.create_job(project_id="proj-1", stage=PipelineStage.SCRIPT)
+        self.service.start_job(job.id)
         self.service.complete_job(job.id, {"output": "data"})
         
         result = self.service.cancel_job(job.id)

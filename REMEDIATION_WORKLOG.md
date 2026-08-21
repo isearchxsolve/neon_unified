@@ -26,3 +26,34 @@ verify → fix → test → log → commit.
   collects its 5 test cases).
 - **Also committed:** pre-existing AGENTS.md rules-block prepend (was dirty in working tree).
 - **Commit:** (this entry committed together with the fix)
+
+### [2026-08-22 05:05] GAP-NU-2 — QA gate fails open, self-heal never wired — FIXED
+
+- **Repro (pre-fix):** `generation_core.py::_run_qa_pass` returned None (="no QA signal",
+  treated as non-failure) on EVERY friction path: Playwright missing, no `_preview_starter`,
+  server fails, QA run raises. QA was opt-in (`enable_qa_pass`) and `qa_self_heal.py`'s
+  closed loop was never invoked by the generation path.
+- **Fix (all in generation_core.py unless noted):**
+  1. Gate is now DEFAULT-ON for web stacks; only two outcomes return None: non-web stack,
+     or explicit `config["qa_gate"]="off"`.
+  2. New `_FailedQA` dataclass (ok=False always) is returned for every cannot-run path:
+     qa_browser import failure, non-callable starter, starter raising, starter returning no
+     URL, Playwright missing, QA run exception, self-heal exception.
+  3. Built-in `_default_preview_starter`: serves `frontend/` via ThreadingHTTPServer on a
+     free localhost port when the caller wires no starter; registered in `_PREVIEW_SERVERS`
+     and always shut down by `_stop_preview_servers()` at gate end.
+  4. On QA failure the gate now drives `qa_self_heal.run_self_heal_loop` (max rounds via
+     `config["qa_max_heal_rounds"]`, default 5, pool=self.pool) and returns the HealResult.
+  5. generate() call site: any result with ok=False appends a HARD error
+     (`qa: browser QA gate failed -- <reason>`), which flips result.success to False via the
+     existing hard-error filter. Preview servers stopped afterwards.
+- **New tests:** `tests/test_qa_gate_fail_closed.py` (8 cases): _FailedQA never ok; explicit
+  off → None; non-web stacks → None; qa_browser unavailable → fail closed; starter raises →
+  fail closed; starter returns no URL → fail closed; default starter serves real HTTP and
+  stops cleanly; no frontend → None URL.
+- **Test output (verbatim):**
+  ```
+  tests/test_qa_gate_fail_closed.py: 8 passed in 1.20s
+  full suite: 1173 passed in 5.63s
+  ```
+- **Commit:** (with this entry)

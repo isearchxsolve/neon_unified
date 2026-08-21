@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -34,6 +35,54 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 LOG = logging.getLogger("neon.generation")
 MAX_DESCRIPTION_CHARS = 12_000
 MAX_PROJECT_NAME_CHARS = 120
+
+# Preview servers started for browser QA (GAP-NU-2). Registered so
+# generate() can always shut them down, even when the gate fails.
+_PREVIEW_SERVERS: List[Any] = []
+
+
+def _default_preview_starter(project_dir: Path, stack: str) -> Optional[str]:
+    """Serve the generated frontend statically so browser QA can load it.
+
+    Used when the caller did not wire config["_preview_starter"]. Serves
+    ``frontend/`` over a local HTTP server; the Vite source tree is served
+    raw (no bundling), which is enough for the document-load and structural
+    QA checks. Returns the base URL, or None when there is nothing to serve.
+    """
+    import functools
+    import http.server
+    import socket
+
+    frontend = Path(project_dir) / "frontend"
+    if not (frontend / "index.html").exists():
+        return None
+
+    class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *args: Any) -> None:
+            pass
+
+    sock = socket.socket()
+    try:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    finally:
+        sock.close()
+
+    handler = functools.partial(_QuietHandler, directory=str(frontend))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    _PREVIEW_SERVERS.append(server)
+    return f"http://127.0.0.1:{port}"
+
+
+def _stop_preview_servers() -> None:
+    while _PREVIEW_SERVERS:
+        server = _PREVIEW_SERVERS.pop()
+        try:
+            server.shutdown()
+            server.server_close()
+        except Exception:
+            pass
 
 
 class GenerationError(RuntimeError):
@@ -358,6 +407,15 @@ class GenerationResult:
     qa_output: Optional[Any] = None
     repair_rounds: int = 0
     run_id: str = ""
+
+
+@dataclass
+class _FailedQA:
+    """Stand-in QA result for a gate that could not run. ok is always False:
+    a QA gate that cannot execute is a failure, never a pass (GAP-NU-2)."""
+    reason: str
+    ok: bool = False
+    report_path: str = ""
 
 
 ProgressCb = Optional[Callable[[str, str], None]]
@@ -1436,60 +1494,84 @@ class GenerationOrchestratorV5:
         stack: str,
         on_progress: ProgressCb,
     ) -> Optional[Any]:
-        """Best-effort browser QA pass for web stacks. Opt-in via
-        config["enable_qa_pass"] because it starts a real dev server and
-        requires Playwright -- a meaningfully heavier runtime dependency
-        than the rest of generate(), which previously never launched a
-        server or a browser. Returns a QAResult, or None if skipped/
-        unavailable (missing Playwright, non-web stack, disabled, or the
-        preview server failed to start) -- callers should treat None as
-        "no QA signal available", not as a failure.
+        """Browser QA gate for web stacks. FAIL CLOSED (GAP-NU-2).
+
+        Default-ON for stacks that serve a frontend. Returns a QAResult
+        (ok=True/False) or a HealResult after the self-heal loop. Returns
+        None ONLY for the two explicit opt-outs:
+          - non-web stack (expo-node / flutter-fastapi serve no frontend)
+          - config["qa_gate"] == "off" (explicit user opt-out)
+        Every other failure mode (Playwright missing, preview server down,
+        QA run exception, self-heal unable to repair) yields ok=False so
+        generate() records a hard error instead of silently shipping.
         """
         if stack not in ("fastapi-react", "nextjs-postgres"):
             # qa_browser drives a real browser against a served frontend;
             # expo-node and flutter-fastapi don't serve one.
             return None
-        if not self.config.get("enable_qa_pass"):
+        if str(self.config.get("qa_gate", "on")).lower() == "off":
+            self._prog(on_progress, "qa", "QA gate explicitly disabled (config['qa_gate']='off')")
             return None
 
         try:
             from qa_browser import run_qa_suite
         except Exception as e:
-            self._prog(on_progress, "qa", f"⚠ qa_browser unavailable: {e}")
-            return None
+            self._prog(on_progress, "qa", f"[FAIL] qa_browser unavailable: {e}")
+            return _FailedQA(f"qa_gate_unavailable: {e}")
 
-        preview_start = self.config.get("_preview_starter")
+        preview_start = self.config.get("_preview_starter") or _default_preview_starter
         if not callable(preview_start):
-            self._prog(
-                on_progress, "qa",
-                "⚠ no preview starter wired (config['_preview_starter']); skipping QA",
-            )
-            return None
+            self._prog(on_progress, "qa", "[FAIL] config['_preview_starter'] is not callable")
+            return _FailedQA("qa_gate_unavailable: _preview_starter not callable")
 
         try:
             base_url = preview_start(project_dir, stack)
         except Exception as e:
-            self._prog(on_progress, "qa", f"⚠ preview server failed to start: {e}")
-            return None
+            self._prog(on_progress, "qa", f"[FAIL] preview server failed to start: {e}")
+            return _FailedQA(f"preview_server_failed: {e}")
         if not base_url:
-            self._prog(on_progress, "qa", "⚠ preview server did not return a URL; skipping QA")
-            return None
+            self._prog(on_progress, "qa", "[FAIL] no servable frontend for QA (no preview URL)")
+            return _FailedQA("preview_server_failed: no URL returned")
 
         spec = self._build_baseline_ui_spec(ctx, base_url)
         if spec is None:
-            self._prog(on_progress, "qa", "⚠ Playwright not installed; skipping QA")
-            return None
+            self._prog(on_progress, "qa", "[FAIL] Playwright not installed; QA gate cannot run")
+            return _FailedQA("qa_gate_unavailable: Playwright not installed")
 
         self._prog(on_progress, "qa", f"Running browser QA against {base_url}…")
+        qa_out = project_dir / "qa_out"
         try:
-            qa_out = project_dir / "qa_out"
             qa_result = run_qa_suite(spec, out_dir=qa_out, update_baselines=True)
         except Exception as e:
-            self._prog(on_progress, "qa", f"⚠ QA run failed: {e}")
-            return None
+            self._prog(on_progress, "qa", f"[FAIL] QA run raised: {e}")
+            return _FailedQA(f"qa_run_exception: {e}")
 
-        self._prog(on_progress, "qa", "[OK] QA passed" if qa_result.ok else "[FAIL] QA found issues")
-        return qa_result
+        if qa_result.ok:
+            self._prog(on_progress, "qa", "[OK] QA passed")
+            return qa_result
+
+        # QA failed -> run the closed self-heal loop (GAP-NU-2 wiring).
+        self._prog(on_progress, "qa", "[FAIL] QA found issues -- entering self-heal loop")
+        try:
+            from qa_self_heal import run_self_heal_loop
+            heal = run_self_heal_loop(
+                spec,
+                project_dir,
+                out_dir=qa_out / "self_heal",
+                max_rounds=int(self.config.get("qa_max_heal_rounds", 5)),
+                use_full_agent=False,
+                pool=self.pool,
+                config=self.config,
+            )
+        except Exception as e:
+            self._prog(on_progress, "qa", f"[FAIL] self-heal loop raised: {e}")
+            return _FailedQA(f"self_heal_exception: {e}")
+
+        if heal.success:
+            self._prog(on_progress, "qa", f"[OK] QA passed after self-heal ({len(heal.rounds)} round(s))")
+        else:
+            self._prog(on_progress, "qa", f"[FAIL] self-heal could not repair QA issues ({heal.stop_reason})")
+        return heal
 
     def generate(
         self,
@@ -1676,18 +1758,18 @@ class GenerationOrchestratorV5:
         except Exception as e:
             result.warnings.append(f"devops: {e}")
 
-        # 10. Optional browser QA pass (web stacks only, opt-in -- see
-        # _run_qa_pass docstring). Recorded as a warning, not a hard
-        # error/success gate: it's a best-effort signal built from a
-        # generic baseline spec, not a ground-truth product requirement,
-        # so it shouldn't be able to flip result.success on its own the
-        # way a failing pytest run can.
+        # 10. Browser QA gate (web stacks, default-ON, FAIL CLOSED -- GAP-NU-2).
+        # None means the gate legitimately does not apply (non-web stack or
+        # explicit opt-out). Any result with ok=False is a hard error: the
+        # gate ran (or tried to) and the output did not clear it.
         qa_result = self._run_qa_pass(ctx, project_dir, stack, on_progress)
         result.qa_output = qa_result
         if qa_result is not None and not qa_result.ok:
-            result.warnings.append(
-                f"qa: browser QA found issues -- see {qa_result.report_path or 'qa_out/'}"
+            reason = getattr(qa_result, "reason", None) or (
+                f"see {getattr(qa_result, 'report_path', '') or 'qa_out/'}"
             )
+            result.errors.append(f"qa: browser QA gate failed -- {reason}")
+        _stop_preview_servers()
 
         hard = [e for e in result.errors if not e.startswith("[soft]")]
         if test_result.ran:

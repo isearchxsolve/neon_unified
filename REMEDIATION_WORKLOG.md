@@ -126,3 +126,46 @@ verify → fix → test → log → commit.
   full repo suite: 1183 passed in 5.43s
   ```
 - **Commit:** (with this entry)
+
+### [2026-08-22 06:45] GAP-NU-6 — live generation proof — BLOCKED (NIM inference wall, evidence captured)
+
+- **Attempt:** wrote `live_proof_run.py` (real Provider/ProviderPool from neon_architect,
+  model meta/llama-3.3-70b-instruct, read_timeout=600s, qa_gate=off because the default
+  preview starter serves raw Vite source without bundling — a bundling starter is follow-up
+  work). Launched fresh run into `_live_proof_fastapi_react_20260822/`.
+- **Observed:** scaffold OK (13 base files), then the architect NIM call never returned;
+  the process died silently mid-call (no traceback, no summary file).
+- **Isolation evidence (all captured live, 2026-08-22 ~06:35):**
+  1. `GET /v1/models` with the same key: **200 OK in 0.3s, 102 models**, llama-3.3-70b present.
+  2. Non-streaming chat completion, 60s timeout: APITimeoutError.
+  3. Same, 180s timeout: APITimeoutError.
+  4. Streaming on llama-3.3-70b (90s): APITimeoutError, zero chunks.
+  5. Streaming on nvidia/llama-3.1-nemotron-nano-8b-v1 (90s): ReadTimeout, zero chunks.
+- **Diagnosis:** auth + catalog are healthy; INFERENCE never returns a first token on two
+  different models including an 8B nano model. This is a provider-side quota/throttle wall
+  on this key, not a code defect — consistent with UNIFIED.md limitation #2 ("True 429/RPM —
+  quota, not code; use healthy keys / backoff"). Per remediation rule 3 this is logged
+  BLOCKED with exact evidence, NOT faked.
+- **Artifacts:** `live_proof_run.py` (committed, reusable the moment a healthy key exists),
+  `_live_proof_run.log`, partial scaffold in `_live_proof_fastapi_react_20260822/`.
+- **Unblock path:** run `python live_proof_run.py` with a key that has live NIM quota;
+  acceptance unchanged: success=True, consistency clean, generated tests pass.
+
+### [2026-08-22 06:50] GAP-NU-7 — 641KB monoliths with no growth control — FIXED (freeze + plan)
+
+- **Repro:** `neon_architect.py` 641,222 bytes, `neon_architect_v5.py` 643,861 bytes, single
+  files containing 17 tool classes, the agent loop, TUI, FastAPI demo, Flutter template
+  strings, and 6 specialized agents.
+- **Fix (minimal, per prompt):** no full refactor this sweep.
+  1. `docs/MONOLITH_EXTRACTION_PLAN.md`: verified line map of every class in the monolith,
+     proposed module layout (neon/config, ui, pacing, providers, tools/*, context, agent,
+     tui, templates, specialists), dependency-safe extraction order, known hazards
+     (Flutter `{{ }}` template strings, TodoTool isolation fixes).
+  2. `tests/test_monolith_freeze.py`: hard 660,000-byte ceiling on both monoliths; fails CI
+     if either grows; skips cleanly if a monolith is deleted (extraction complete).
+- **Test output (verbatim):**
+  ```
+  tests/test_monolith_freeze.py: 2 passed in 0.04s
+  full suite: 1185 passed in 5.47s
+  ```
+- **Commit:** (with this entry)

@@ -1,3 +1,42 @@
 [    0.0s] scaffold: Writing fastapi-react base…
 [    0.0s] scaffold: [OK] 13 base files
 [    0.0s] architect: Designing architecture…
+[ 1937.7s] architect: [FAIL] [architect] NIM exhausted: Error code: 504
+[ 1937.7s] design_tokens: Design tokens…
+[ 1937.7s] design_tokens: [OK] 1 file(s)
+[ 1937.7s] primitives: UI primitives…
+[ 1967.7s] primitives: [FAIL] [primitives] no provider available
+[ 1967.7s] backend: Layered backend…
+[ 4536.8s] backend: [FAIL] [backend] NIM exhausted: Error code: 504
+[ 4536.8s] frontend: Feature screens…
+[ 4566.8s] frontend: [FAIL] [frontend_features] no provider available
+[ 4566.8s] polish: UI polish pass…
+[ 4566.8s] polish: [OK] 0 file(s)
+[ 4566.8s] tester: Writing tests…
+[ 6533.3s] consistency: [OK] import graph clean
+[ 6533.3s] test: ⚠ No tests/ directory
+[ 6533.3s] devops: Deployment artifacts…
+[ 6563.3s] qa: QA gate explicitly disabled (config['qa_gate']='off')
+[ 6563.3s] verdict: run_id=0116f2b8035f46eda7b2d5dde54ba406 success=False files=1
+{
+  "success": false,
+  "run_id": "0116f2b8035f46eda7b2d5dde54ba406",
+  "stack": "fastapi-react",
+  "files_created": 13,
+  "files_generated": 1,
+  "errors": [
+    "architect: [architect] NIM exhausted: Error code: 504",
+    "primitives: [primitives] no provider available",
+    "backend: [backend] NIM exhausted: Error code: 504",
+    "frontend: [frontend_features] no provider available"
+  ],
+  "warnings": [
+    "tester: [tester] NIM exhausted: Error code: 504",
+    "devops: [devops] no provider available"
+  ],
+  "repair_rounds": 0,
+  "test_ran": false,
+  "test_passed": false,
+  "test_output_tail": "No tests/ directory",
+  "duration_sec": 6563.3
+}

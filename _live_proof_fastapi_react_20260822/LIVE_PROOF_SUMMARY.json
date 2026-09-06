@@ -1,0 +1,22 @@
+{
+  "success": false,
+  "run_id": "0116f2b8035f46eda7b2d5dde54ba406",
+  "stack": "fastapi-react",
+  "files_created": 13,
+  "files_generated": 1,
+  "errors": [
+    "architect: [architect] NIM exhausted: Error code: 504",
+    "primitives: [primitives] no provider available",
+    "backend: [backend] NIM exhausted: Error code: 504",
+    "frontend: [frontend_features] no provider available"
+  ],
+  "warnings": [
+    "tester: [tester] NIM exhausted: Error code: 504",
+    "devops: [devops] no provider available"
+  ],
+  "repair_rounds": 0,
+  "test_ran": false,
+  "test_passed": false,
+  "test_output_tail": "No tests/ directory",
+  "duration_sec": 6563.3
+}
